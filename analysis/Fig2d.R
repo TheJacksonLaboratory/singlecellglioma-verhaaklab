@@ -17,22 +17,23 @@ title: "Figure 1h"
   library(gtable)
   library(egg)
   library(reshape2)
+  library(ggpubr)
 
 
   # Load clinical metadata (available on Synapse)
-  clinical_meta <- read.csv("~/Documents/scgp/synapse_tables/recoded_id/tables/clinical_metadata.csv")
+  clinical_meta <- read.csv("clinical_metadata.csv")
   
   # Combine IDHmut subtypes
   clinical_meta <- clinical_meta %>% mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut"))
   
   # Load scRRBS sequencing QC (available on Synapse)
-  scRRBS_qc <- read.csv("~/Documents/scgp/synapse_tables/recoded_id/tables/analysis_scRRBS_sequencing_qc.csv")
+  scRRBS_qc <- read.csv("analysis_scRRBS_sequencing_qc.csv")
   
   # Load metrics for CpG density overlapping TFBS motifs
-  cpg_density_info <- read.delim("~/Documents/scgp/github/scRRBS_epiallele_CpG_density_summary.txt")
+  cpg_density_info <- read.delim("scRRBS_epiallele_CpG_density_summary.txt")
   
   # Load TFBS motif DNAme disorder (available on Synapse)
-  tf_pdr <- read.csv("~/Documents/scgp/synapse_tables/recoded_id/tables/analysis_scRRBS_individual_TFBS_motif_DNAme_disorder.csv")
+  tf_pdr <- read.csv("analysis_scRRBS_individual_TFBS_motif_DNAme_disorder.csv")
   
   # Add IDH status to DNAme disorder table
   tf_pdr <- tf_pdr %>% left_join(clinical_meta[c("case_barcode","idh_status")])
@@ -292,7 +293,7 @@ title: "Figure 1h"
                                      aes(x=CpG_density_AUC, y=DNAme_disorder, color = subtype, group = subtype)) +
     facet_wrap(~distance_from_motif_center, nrow = 2, ncol = 2) +
     geom_point() +
-    ggpubr::stat_cor(method = "spearman") +
+    stat_cor(method = "spearman") +
     scale_color_manual(values = c('IDHwt'='#7fbf7b','IDHmut'='#af8dc3')) +
     theme_bw() + 
     theme(axis.line = element_blank(),
