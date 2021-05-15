@@ -1,6 +1,9 @@
----
-title: "Figure 1h"
----
+##################################
+# Generate Fitted curves DNA methylation and DNA methylation disorder 
+# as CpG islands and adjacent shores.
+# Updated: 2021.05.15
+# Author: Kevin A.
+###################################
   
   ### Preprocessing
   
