@@ -6,7 +6,7 @@ title: "Figure 1h"
   
   #### Load data
   
-  ```{r}
+  
   library(genomation)
   library(GenomicRanges)
   library(dplyr)
@@ -24,11 +24,11 @@ title: "Figure 1h"
   
   # Combine IDHmut subtypes
   clinical_meta <- clinical_meta %>% mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut"))
-  ```
+  
   
   #### Average metrics across cells to compare sample level aggregation of epimutation burden and methylation status across CGI sets
   
-  ```{r}
+  
   # Initialize output lists
   samples_pdr.cell_avg <- vector(mode = "list", length = length(samples_pdr))
   samples_meth.cell_avg <- vector(mode = "list", length = length(samples_pdr))
@@ -72,11 +72,11 @@ title: "Figure 1h"
   samples_meth.cell_avg.df$anno_name <- factor(samples_meth.cell_avg.df$anno_name, levels = c("upstream_CGI_shore","CGI","downstream_CGI_shore"))
   samples_meth.cell_avg.df$sample <- gsub("-","",substr(samples_meth.cell_avg.df$sample,6,11))
   samples_meth.cell_avg.df <- samples_meth.cell_avg.df %>% left_join(clinical_meta[,c(1,16)], by = c("sample"="case_barcode"))
-  ```
+  
   
   ### Figure generation
   
-  ```{r}
+  
   plot_theme  <- theme_bw(base_size = 12) + theme(axis.title = element_text(12),
                                                   axis.text = element_text(size = 12),
                                                   panel.background = element_rect(fill = "transparent"),
@@ -133,4 +133,4 @@ title: "Figure 1h"
   
   # Combine plots
   combined_subtype_fig <- ggarrange(merged_feature_sample_meth_fig.subtype, merged_feature_sample_pdr_fig.subtype, nrow = 2, ncol = 1, heights = c(1,1))
-  ```
+  
