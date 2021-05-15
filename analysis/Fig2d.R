@@ -6,7 +6,7 @@ title: "Figure 1h"
   
   #### Load data
   
-  ```{r}
+  
   library(topGO)
   library(tidyverse)
   library(openxlsx)
@@ -44,11 +44,11 @@ title: "Figure 1h"
   # Set the case_barcode order as in manuscript figures.
   case_order <- c("SM004", "SM001", "SM015", "SM019", "SM002", "SM008", "SM006", "SM012", "SM017", "SM018", "SM011")
   tf_pdr$case_barcode <- factor(tf_pdr$case_barcode, levels = case_order)
-  ```
+  
   
   #### Process data for figure generation
   
-  ```{r}
+  
   # Filter data to remove TF observations for cells with < 100 reads for that TF,
   # TFs identified as lacking CpGs at binding motifs, and any TFs lacking observations in both subtypes
   tfs_to_drop <-  c("HLTF", "EN1", "FOXD1", "FOXG1", "FOXN3", "FOXO3", "MEIS3", "MSX1", "PRRX1", "Shox2", "VAX2")
@@ -141,8 +141,8 @@ title: "Figure 1h"
   
   ### Add GSC essential + fitness genes
   # Load the CRISPR screen with Bayes Factor value (BAGEL algorithm) per cell line and per gene.
-  stab1 <- readWorkbook("~/Documents/Papers Supplemental Information/Genome-Wide CRISPR-Cas9 Screens Expose Genetic Vulnerabilities and Mechanisms of Temozolomide Sensitivity in Glioblastoma Stem Cells/maccleod-supptable1.xlsx", sheet = 1, startRow = 1, rowNames=TRUE, colNames = TRUE)
-  stab2 <- readWorkbook("~/Documents/Papers Supplemental Information/Genome-Wide CRISPR-Cas9 Screens Expose Genetic Vulnerabilities and Mechanisms of Temozolomide Sensitivity in Glioblastoma Stem Cells/maccleod-supptable2.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
+  stab1 <- readWorkbook("maccleod-supptable1.xlsx", sheet = 1, startRow = 1, rowNames=TRUE, colNames = TRUE)
+  stab2 <- readWorkbook("maccleod-supptable2.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
   
   # Include all profiled cells.
   stab1_gsc <- stab1[,1:12]
@@ -208,11 +208,11 @@ title: "Figure 1h"
   tf_pdr_filt_subtype_density.corr$distance_from_motif_center <- 
     factor(tf_pdr_filt_subtype_density.corr$distance_from_motif_center,
            levels = unique(tf_pdr_filt_subtype_density.corr$distance_from_motif_center))
-  ```
+  
   
   ### Common plotting elements
   
-  ```{r}
+  
   # Set plot themes
   plot_theme <- theme_bw(base_size = 12) + 
     theme(axis.title = element_text(size = 12),
@@ -262,13 +262,13 @@ title: "Figure 1h"
     else
       gg + plot_theme + theme(axis.text.x = element_text(angle = 90, hjust = 1))
   }
-  ```
+  
   
   
   
   ### Figure generation
   
-  ```{r}
+  
   # Generate plot of subtype mean TFBS motif DNAme disorder, ranked by DNAme disorder
   # with a dotted line connecting IDHmut and IDHwt, and TFs associated with GSC fitness genes annotated
   gg_epimut_tf_fitness <- ggplot(tf_pdr_filt_plot, aes(x=TF)) +
@@ -347,7 +347,7 @@ title: "Figure 1h"
   
   # Plot combined legend panels
   plot(gleg)
-  ```
+  
   
   
   
