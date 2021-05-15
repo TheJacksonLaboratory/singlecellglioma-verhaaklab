@@ -15,11 +15,11 @@ title: "Figure 1h"
   # Load sample binned feature DNAme disorder and methylation tables
   # NOTE: current object format is a list of data frames, one per patient, 
   # containing binned CGI feature (upstream_CGI_shore, CGI, downstream_CGI_shore) values per cell
-  samples_pdr <- readRDS("~/Documents/scgp/synapse_tables/recoded_id/files/analysis_scRRBS_binned_CGI_and_shores_DNAme_disorder.Rds")
-  samples_meth <- readRDS("~/Documents/scgp/synapse_tables/recoded_id/files/analysis_scRRBS_binned_CGI_and_shores_methylation.Rds")
+  samples_pdr <- readRDS("analysis_scRRBS_binned_CGI_and_shores_DNAme_disorder.Rds")
+  samples_meth <- readRDS("analysis_scRRBS_binned_CGI_and_shores_methylation.Rds")
   
   # Load clinical metadata
-  clinical_meta <- read.csv("~/Documents/scgp/synapse_tables/recoded_id/tables/clinical_metadata.csv")
+  clinical_meta <- read.csv("clinical_metadata.csv")
   
   # Combine IDHmut subtypes
   clinical_meta <- clinical_meta %>% mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut"))
@@ -132,10 +132,4 @@ title: "Figure 1h"
   
   # Combine plots
   combined_subtype_fig <- egg::ggarrange(merged_feature_sample_meth_fig.subtype, merged_feature_sample_pdr_fig.subtype, nrow = 2, ncol = 1, heights = c(1,1))
-  
-  pdf(paste0("~/Documents/scgp/epimutation/results/rerun-reformatted_deduplicated-final_recalculated","/",
-             "Samples-passQC_single_tumor_cells_CGI_and_shores_merged_feature_meth_and_pdr_curves-subtype_annotation.pdf"), 
-      width = 5.5, height = 5.6, useDingbats = FALSE, bg="transparent")
-  combined_subtype_fig
-  dev.off()
   ```
