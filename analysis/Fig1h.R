@@ -11,6 +11,7 @@ title: "Figure 1h"
   library(GenomicRanges)
   library(dplyr)
   library(ggplot2)
+  library(egg)
 
   # Load sample binned feature DNAme disorder and methylation tables
   # NOTE: current object format is a list of data frames, one per patient, 
@@ -131,5 +132,5 @@ title: "Figure 1h"
     labs(x = NULL, y = "Mean cell DNA\nmethylation disorder (PDR)") 
   
   # Combine plots
-  combined_subtype_fig <- egg::ggarrange(merged_feature_sample_meth_fig.subtype, merged_feature_sample_pdr_fig.subtype, nrow = 2, ncol = 1, heights = c(1,1))
+  combined_subtype_fig <- ggarrange(merged_feature_sample_meth_fig.subtype, merged_feature_sample_pdr_fig.subtype, nrow = 2, ncol = 1, heights = c(1,1))
   ```
