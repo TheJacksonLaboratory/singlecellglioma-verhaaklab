@@ -16,14 +16,18 @@ library(cowplot)
 library(openxlsx)
 ###################################
 
-## ggplot2 theme.
+## Generate plot theme.
 plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size = 12),
-                                                  axis.text.x = element_text(size = 12, angle=90, hjust =1),
+                                                  axis.text = element_text(size = 12),
+                                                  axis.text.x = element_text(angle=45, hjust=1),
                                                   panel.background = element_rect(fill = "transparent"),
-                                                  panel.border = element_rect(colour = "black", fill=NA),
                                                   axis.line = element_blank(),
-                                                  strip.background =element_rect(fill="white"))
-
+                                                  strip.background = element_blank(),
+                                                  panel.grid.major = element_blank(),
+                                                  panel.grid.minor = element_blank(), 
+                                                  panel.border = element_blank(),
+                                                  axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
+                                                  axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
 ## Load in pre-processed 10X data for all samples.
 load("10X/10X-aggregation-20190905/RV18001-2-3-RV19001-2-4-5-6-7-8-9_20190827.Rds")
@@ -86,7 +90,7 @@ non_tumor_clust_annot <- non_tumor_clust_annot %>% mutate(sample_id = factor(sam
 non_tumor_clust_annot <- non_tumor_clust_annot %>% mutate(cell_type = factor(cell_type, levels = cell_state_order))
 
 
-pdf("github/results/non-tumor-states.pdf", width = 9, height = 5)
+pdf("github/results/Fig3/SuppFig6c-non-tumor-states.pdf", width = 6, height = 4, useDingbats = FALSE, bg="transparent")
 ggplot(non_tumor_clust_annot, aes(x = sample_id, y = freq, fill=cell_type)) +
   geom_bar(stat="identity") +
   labs(x="", y = "Proportion cell state", fill="Non-tumor cell state") +

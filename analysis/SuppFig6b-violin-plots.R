@@ -144,28 +144,24 @@ scgp@active.ident <- factor(x = scgp@active.ident, levels = my_levels)
 
 #### Provide a set of genes that discriminates cell states:
 features_set1 <- c("SOX2", "OLIG2", "ASCL1", "TOP2A", "EGFR", "AQP4",
-              "ID4", "MOG", "FBLN1")
-features_set2 <- c("CLDN5", "DCN", "CD79A", "S100A9", 
+              "ID4", "MOG", "HLA-DPB1")
+features_set2 <- c("FBLN1", "CLDN5", "DCN", "CD79A", "S100A9", 
               "CD3D", "HLA-DPB1", "CD14", "C1QA")
 
-
-
-pdf("github/results/cell-states-violin_set1.pdf", width = 8, height = 11)
+pdf("github/results/Fig3/cell-states-violin_set1.pdf", width = 8, height = 11)
 StackedVlnPlot(obj = scgp, features = features_set1, cols=c("B cell" = "#eff3ff", "Granulocyte" = "#bdd7e7", "T cell" = "#6baed6", "Dendritic cell" = "#3182bd", "Myeloid" = "#08519c",
                                                        "Oligodendrocyte" = "#2ca25f",
                                                        "Endothelial" = "#ffffd4", "Pericyte" = "#fee391",
                                                        "Fibroblast" = "#feb24c",
-                                                       "Stem-like" = "#fb6a4a", "Diff.-like" = "#fcbba1", "Prolif. stem-like" = "#a50f15")) +
-  theme(axis.text = element_text(size = 12, angle=45))
+                                                       "Stem-like" = "#fb6a4a", "Diff.-like" = "#fcbba1", "Prolif. stem-like" = "#a50f15"))
 dev.off()
 
-pdf("github/results/cell-states-violin_set2.pdf", width = 8, height = 11)
+pdf("github/results/Fig3/cell-states-violin_set2.pdf", width = 8, height = 11)
 StackedVlnPlot(obj = scgp, features = features_set2, cols=c("B cell" = "#eff3ff", "Granulocyte" = "#bdd7e7", "T cell" = "#6baed6", "Dendritic cell" = "#3182bd", "Myeloid" = "#08519c",
                                                             "Oligodendrocyte" = "#2ca25f",
                                                             "Endothelial" = "#ffffd4", "Pericyte" = "#fee391",
                                                             "Fibroblast" = "#feb24c",
-                                                            "Stem-like" = "#fb6a4a", "Diff.-like" = "#fcbba1", "Prolif. stem-like" = "#a50f15")) +
-  theme(axis.text = element_text(size = 12, angle=45))
+                                                            "Stem-like" = "#fb6a4a", "Diff.-like" = "#fcbba1", "Prolif. stem-like" = "#a50f15"))
 dev.off()
 
 ### END ####

@@ -18,16 +18,22 @@ library(survminer)
 library(survival)
 library(EnvStats)
 ###################################
-## ggplot theme
+
+
+## Generate plot theme.
 plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size = 12),
-                                                  axis.text = element_text(size=12),
+                                                  axis.text = element_text(size = 12),
                                                   panel.background = element_rect(fill = "transparent"),
                                                   axis.line = element_blank(),
-                                                  strip.background =element_rect(fill="white"),
+                                                  strip.background = element_blank(),
                                                   panel.grid.major = element_blank(),
-                                                  panel.grid.minor = element_blank())
+                                                  panel.grid.minor = element_blank(), 
+                                                  panel.border = element_blank(),
+                                                  axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
+                                                  axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
-## Retrieve the chromosome arm-data for aneuploidy value estimates from database.
+
+## Retrieve the chromosome arm-data for SCNA value estimates from database.
 con <- DBI::dbConnect(odbc::odbc(), "VerhaakDB3")
 chr_arms = dbReadTable(con,  Id(schema="ref", table="chr_arms"))
 
@@ -37,7 +43,7 @@ klughammer_dict <- read.delim("/Users/johnsk/Documents/Single-Cell-DNAmethylatio
 
 # Restrict to tumor tissue by removing non-tumor tissue from epilepsy patients. Add some additional filtering criteria.
 klughammer_dat = klughammer_dat_all %>% 
-  # A few tumors do not have IDH status and a single sample appears to have an epimutation of 0.
+  # A few tumors do not have IDH status and a single sample appears to have an DNAme disorder of 0.
   filter(tissue != "White matter",  mean_pdr > 0, !is.na(IDH))
 
 # "IDH" status separates based on IDHmut status.
@@ -128,7 +134,7 @@ disorder_assoc <- data.frame(pvalues, sign, variables)
 disorder_assoc$variables <- factor(disorder_assoc$variables, levels = c("Age", "Timepoint", "Proliferation\n(MIB staining)", "SCNA"))
 
 ## Can demonstrate that copy number alterations are associated with DNAme disorder.
-pdf(file = "results/methylation/public/klughammer-disorder-vars.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
+pdf(file = "github/results/Fig5/klughammer-disorder-vars.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
 ggplot(disorder_assoc, aes(x=variables,  y=-log10(pvalues), size = -log10(pvalues), color = sign)) + 
   geom_point() + 
   geom_hline(yintercept = -log10(0.05), alpha=0.8, linetype=2) +
@@ -138,11 +144,13 @@ dev.off()
 
 
 ## It appears that the relationship is stronger for the initial IDHwt samples. This could be a bias of sample size.
-pdf(file = "github/results/Fig5c-disorder-SCNA.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
+pdf(file = "github/results/Fig5/Fig5c-disorder-SCNA-nolegend.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
 ggplot(klughammer_fga_filtered_wt, aes(x=total_fga,  y=mean_pdr, color=idh_status)) + 
   geom_point() + 
   ylab("Promoter DNAme disorder") + xlab("SCNA burden") +
   plot_theme + 
+  theme(legend.position="bottom",
+        panel.spacing.x = unit(1.5, "lines")) +
   geom_smooth(method = "lm") +   
   xlim(0, 1) +
   scale_color_manual(name='Glioma subtype', values=c('IDHmut'='#AF8DC3', "IDHwt"="#7FBF7B")) +
@@ -198,7 +206,7 @@ long_instability_idh_wt = long_instability %>%
 
 
 ## Restrict only to the IDHwt tumors to aid in clarity.
-pdf(file = "results/methylation/public/klughammer-longitudinal-SCNA-disorder.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
+pdf(file = "github/results/Fig5/Fig5d-longitudinal-SCNA-disorder.pdf", height = 4, width = 4, bg = "transparent", useDingbats = FALSE)
 ggplot(long_instability_idh_wt, aes(x=aneuploidy_diff,  y=disorder_diff, color=idh_codel_subtype)) + 
   geom_point() + ylab("Delta DNAme disorder\n (Recurrence - Initial)") + xlab("Delta SCNA burden\n(Recurrence - Initial)") +
   theme_bw() + geom_smooth(method = "lm") +   
@@ -315,7 +323,7 @@ summary(pdr_prog_cox)
 ## Generate visualizations based on groupings:
 fit_wt_pdr <- survfit(Surv(timeToSecSurg.mo, patient_vital_surgical_int) ~ disorder_diff_group,
                              data = long_instability_clin_wt)
-pdf(file = "results/methylation/public/klughammer-disorder-diff-secondsurg-revised.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
+pdf(file = "github/results/Fig5/Fig5e-disorder-diff-secondsurg.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
 ggsurvplot(fit_wt_pdr, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(30, 0.75),
            palette = c("royalblue4", "tomato3"),
            ylab = "Time to Second Surgery\n probability", xlab = "Time (months)")
