@@ -1,12 +1,13 @@
 ##################################
-# Plot TFs that regulate gene activity (IDHmut samples).
+# Determine + visualize TFs that regulate cell states (IDHmut samples as example).
 # Updated: 2021.05.16
 # Author: Kevin J.
 ###################################
 
 ## Working directory for this analysis.
-mybasedir = "/Users/johnsk/mnt/verhaak-lab/scgp/results/scenic/IDHmut/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
+
 
 ###################################
 # Necessary packages:
@@ -37,130 +38,179 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
-
-## Load the 10X data for all samples.
-load("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10x/10X-aggregation-20190905/RV18001-2-3-RV19001-2-4-5-6-7-8-9_20190827.Rds")
+## Load the 10X data for all tumor samples.
+load("/Users/johnsk/github/data/analysis_scRNAseq_tumor_gene_expression.Rds")
 
 ## Change to HUGO gene name.
-rownames(log2cpm)[1:24703] <- featuredata[1:24703, "Associated.Gene.Name"]
+rownames(expr_norm_data)[1:24703] <- featuredata[1:24703, "Associated.Gene.Name"]
 
-## Define the cell clusters of interest (i.e., tumor cells inferred from marker genes using CellView and confirmed by CNVs).
-tsne.data$cell_name = rownames(tsne.data)
+## 2D UMAP coordinates.
+umap_coords_2d <- read.csv("data/analysis_scRNAseq_tumor_metadata.csv", sep = ",", header = TRUE)
 
-## The object says, "tSNE" but really these are the original UMAP coordinates.
+### Load the subject-level metadata.
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
+
+
 # Limit to IDHmut samples.
-tsne_data_mut <- tsne.data %>% 
-  filter(grepl("-0$|-1$|-2$|-3$|-6$|-8$", rownames(tsne.data)))
-tsne_data_mut$sample_id = sapply(strsplit(tsne_data_mut$cell_name, "-"), "[[", 3)
+umap_data_mut <- umap_coords_2d %>% 
+  filter(case_barcode%in%c("SM019", "SM001", "SM002", "SM004", "SM008", "SM015"))
 
 ## Keep only tumor cells.
-clust_annot = tsne_data_mut %>% 
-  mutate(cell_type = recode(dbCluster, `1` = "differentiated_tumor",  `2` = "myeloid", `3` = "stemcell_tumor",
-                            `4` = "oligodendrocyte", `5` = "prolif_stemcell_tumor", `6` = "granulocyte", `7` = "endothelial",
-                            `8` = "t_cell", `9` = "pericyte", `10` = "fibroblast", `11` = "b_cell", `12` = "dendritic_cell")) 
-cells_to_keep = which(clust_annot$cell_type%in%c("differentiated_tumor", "stemcell_tumor", "prolif_stemcell_tumor"))
-clust_annot <- clust_annot[cells_to_keep, ]
-# Extract the exact name of cells.
-cell_names_keep <- clust_annot$cell_name
+cells_to_keep = which(umap_data_mut$cell_state%in%c("Diff.-like", "Stem-like", "Prolif. stem-like"))
+clust_annot <- umap_data_mut[cells_to_keep, ]
 
-# Create sample-specific labels for each patient to make it easier to refer back.
-clust_annot = clust_annot %>% 
-  mutate(sample_id = recode(sample_id, `0` = "UC917", `1` = "SM001", `2` = "SM002", `3` = "SM004",
-                            `6` = "SM008", `8` = "SM015"))
-sample_clust <- as.factor(clust_annot$sample_id)
-names(sample_clust) <- clust_annot$cell_name
+# Extract the exact name of cells.
+cell_names_keep <- clust_annot$cell_barcode
 
 ## Restrict the RNAseq data to the tumor cells.
-log2cpm <- log2cpm[ , colnames(log2cpm)%in%cell_names_keep] 
-all(colnames(log2cpm)==clust_annot$cell_name)
+expr_norm_data <- expr_norm_data[ ,colnames(expr_norm_data)%in%cell_names_keep] 
+all(colnames(expr_norm_data)==clust_annot$cell_barcode)
 
-## Downsample for input into SCENIC.
+## Downsample for input into SCENIC to make the cell numbers consistent across analyses + run time with R SCENIC version.
 set.seed(43)
-down_sample = sample(ncol(log2cpm), 5000)
-log2cpm <- log2cpm[ , down_sample]
-clust_annot <- clust_annot[down_sample, ]
+down_sample = sample(ncol(expr_norm_data), 5000)
+expr_norm_data_sample <- expr_norm_data[ , down_sample]
+clust_annot_sample <- clust_annot[down_sample, ]
 # Make sure that the same cells are being subsetted.
-all(colnames(log2cpm)==clust_annot$cell_name)
+all(colnames(expr_norm_data_sample)==clust_annot_sample$cell_barcode)
 
-## Enumerate the mitochondrial reads.
-clust_annot$mito = as.numeric(log2cpm[24706, ])
+## Only raw counts.
+raw_cpm = exp(expr_norm_data_sample[c(1:24703), ])-1
+
+## Create a Seurat object using raw counts.
+scgp <- CreateSeuratObject(counts = raw_cpm, min.cells = 1, project = "scgp_mut", names.field = 1, names.delim = "_")
+
+## Use broad tumor cell classification.
+scgp@meta.data$case_barcode <- clust_annot_sample$case_barcode
+scgp@meta.data$cell_state <- clust_annot_sample$cell_state
+
+
+##########################
+### Begin SCENIC approach
+##########################
+## Building the **gene regulatory network (GRN)**: 
+## 1. Identify potential targets for each TF based on co-expression.
+# - Filtering the expression matrix and running GENIE3/GRNBoost. 
+# - Formatting the targets from GENIE3/GRNBoost into co-expression modules. 
+
+## Initialize SCENIC settings:
+org="hgnc" 
+dbDir="reference/cisTarget_databases" 
+myDatasetTitle="SCENIC IDHmut" 
+data(defaultDbNames)
+dbs <- defaultDbNames[[org]]
+scenicOptions <- initializeScenic(org=org, dbDir=dbDir, dbs=dbs, datasetTitle=myDatasetTitle, nCores=10) 
+
+# Save to use at a later time.
+saveRDS(scenicOptions, file="int/scenicOptions.Rds") 
+
+## Load expression matrix.
+exprMat <- data.matrix(scgp@assays$RNA@counts)
+cellInfo <- data.frame(scgp@meta.data$case_barcode)
+rownames(cellInfo) <- rownames(scgp@meta.data)
+colnames(cellInfo) <- "CellType"
+
+# Color to assign to the variables (same format as for NMF::aheatmap)
+colVars <- list(CellType=c("SM001"="#F8766D", 
+                           "SM002"="#DB8E00", 
+                           "SM004"="#AEA200", 
+                           "SM008"="#00BD5C", 
+                           "SM015"="#00A6FF",
+                           "SM019"="#FF63B6"))
+colVars$CellType <- colVars$CellType[intersect(names(colVars$CellType), cellInfo$CellType)]
+
+## Save outputs for cell annotation and color code. 
+saveRDS(cellInfo, file="int/cellInfo.Rds")
+saveRDS(colVars, file="int/colVars.Rds")
+
+
+## Examine how many genes have greater than 0.
+cellInfo$nGene <- colSums(exprMat>0)
+
+## Filter based on the number of genes.
+genesKept <- geneFiltering(exprMat, scenicOptions=scenicOptions,
+                           minCountsPerGene=3*.01*ncol(exprMat),
+                           minSamples=ncol(exprMat)*.01)
+
+
+## Filter the expression matrix only to keep these genes.
+exprMat_filtered <- exprMat[genesKept, ]
+
+
+## Split the targets into positive- and negative-correlated targets 
+## (i.e. Spearman correlation between the TF and the potential target).
+runCorrelation(exprMat_filtered, scenicOptions)
+
+## Optional: add log (if it is not logged/normalized already)
+exprMat_filtered <- log2(exprMat_filtered+1) 
+
+### Run GENIE3 (this is computationally intensive). 
+runGenie3(exprMat_filtered, scenicOptions)
+
+
+## 2.  Select potential direct-binding targets (regulons) based on DNA-motif analysis (*RcisTarget*: TF motif analysis) 
+## Build and score the GRN.
+scenicOptions@settings$verbose <- TRUE
+scenicOptions@settings$nCores <- 10
+scenicOptions@settings$seed <- 123
+
+## 1. Get co-expression modules.
+runSCENIC_1_coexNetwork2modules(scenicOptions)
+
+## 2. Get regulons (with RcisTarget): TF motif analysis).
+runSCENIC_2_createRegulons(scenicOptions)
+
+## 3. Score GRN (regulons) in the cells (with AUCell).
+runSCENIC_3_scoreCells(scenicOptions, exprMat_filtered)
+
+## 4. Determine the binarized activities.
+runSCENIC_4_aucell_binarize(scenicOptions, skipBoxplot = FALSE, skipHeatmaps = FALSE,
+                            skipTsne = FALSE, exprMat = exprMat_filtered)
 
 
 ################################
 ### Re-load SCENIC results
 ################################
-#scenicOptions <- readRDS("int/scenicOptions.Rds")
-#cellInfo <- readRDS("int/cellInfo.Rds")
-#colVars <- readRDS("int/colVars.Rds")
-auc_rankings <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/data/SCENIC/IDHmut/3.3_aucellRankings.Rds")
-regulonAUC <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/data/SCENIC/IDHmut/3.4_regulonAUC.Rds")
+auc_rankings <- readRDS("data/SCENIC/IDHmut/3.3_aucellRankings.Rds")
+regulonAUC <- readRDS("data/SCENIC/IDHmut/3.4_regulonAUC.Rds")
 
 ## Create a data.frame with the gene sets/TFs and cells.
 regulonAUC_df = as.data.frame(getAUC(regulonAUC))
 
 ## The annotation files we have match the regulonAUC data.
-all(clust_annot$cell_name==colnames(regulonAUC_df))
+all(clust_annot_sample$cell_barcode==colnames(regulonAUC_df))
 
 ## generate z-scores for variable A using the scale() function
 ## scale(A, center = TRUE, scale = TRUE). These are the defaults. 
 regulonAUC_scaled = t(apply(as.matrix(regulonAUC_df), 1, scale))
 
-## Load the IDHmut pseudotime data:
-pseudotime_IDHmut = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/monocle/monocle3_IDHmut_pseudotime.txt", sep="\t", header = TRUE, stringsAsFactors = FALSE)
-
-## Add the pseudotime data as a covariate.
-clust_annot = clust_annot %>% 
-  left_join(pseudotime_IDHmut, by="cell_name")
-all(clust_annot$cell_name==colnames(regulonAUC_scaled))
-
-## Provide the "sample_id", "cell_type", and mitochondrial percent annotations for each cell.
-cell_state = gsub("_tumor", "", clust_annot$cell_type)
-sample_id = clust_annot$sample_id
-mito_pct = clust_annot$mito
-pseudotime = clust_annot$pseudotime
-subtype = rep("IDHmut", dim(clust_annot)[1])
-annot_df = data.frame(subtype, sample_id, cell_state)
-#mito_cols <- colorRamp2(c(0, 5, 10, 15, 20), c("#f1eef6", "#d0d1e6", "#a6bddb", "#74a9cf", "#2b8cbe"))
-## viridis(7)
-#pt_cols <- colorRamp2(c(0, 2, 4, 6, 8, 10, 12), c("#440154FF", "#443A83FF", "#31688EFF", "#21908CFF", "#35B779FF",
-#                                                  "#8FD744FF", "#FDE725FF"))
+## Provide the case_barcode, cell_state, and subtype annotations for each cell.
+annot_df = data.frame(clust_annot_sample$cell_barcode, rep("IDHmut", dim(clust_annot_sample)[1]), clust_annot_sample$case_barcode, clust_annot_sample$cell_state)
+colnames(annot_df) <- c("barcode", "subtype", "case_barcode", "cell_state")
 epimut_cols <- colorRamp2(c(0, 0.2, 0.4, 0.6, 0.8, 1.0), c("#4575b4", "#91bfdb", "#e0f3f8", "#fee090", "#fc8d59", "#d73027"))
 
 
 ## Define the annotation colors:
 ha = HeatmapAnnotation(df = annot_df,
-                       col = list(sample_id = c("SM001" = "#F8766D",
+                       col = list(case_barcode = c("SM001" = "#F8766D",
                                     "SM002" = "#DB8E00",
                                     "SM004" = "#AEA200",
                                     "SM008" = "#00BD5C",
                                     "SM015" = "#00A6FF",
-                                    "UC917" = "#FF63B6"),
-                                  cell_state = c("differentiated" = "#fcbba1",
-                                                "stemcell" = "#fb6a4a",
-                                                "prolif_stemcell" = "#a50f15"),
+                                    "SM019" = "#FF63B6"),
+                                  cell_state = c("Diff.-like" = "#fcbba1",
+                                                "Stem-like" = "#fb6a4a",
+                                                "Prolif. stem-like" = "#a50f15"),
                                   subtype = c("IDHmut" = "#AF8DC3")))
 
 
-## What are the high epimutation binding sites for TFs?
-tfbs_epimut = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/tfbs_epimutation_subtype.txt", sep="\t", header = TRUE, stringsAsFactors = FALSE)
-tfbs_epimut = tfbs_epimut %>% 
-  select(tf, IDHmut) %>% 
-  distinct()
+## What are the TFs considered in this analysis?
 scenic_tfs = data.frame(tf = sapply(strsplit(rownames(regulonAUC_scaled), "_| "), "[[", 1)) 
 
-scenic_tfs_epimut = scenic_tfs %>% 
-  left_join(tfbs_epimut, by="tf") %>% 
-  mutate(high_tf = ifelse(IDHmut > 0.399, "high", NA)) %>% 
-  select(tf, epimut = IDHmut, high_tf)
-row_ha = rowAnnotation(epimut = scenic_tfs_epimut$epimut)
-
-## Set z-score limits:
-#regulonAUC_scaled[regulonAUC_scaled < -4] = -4
-#regulonAUC_scaled[regulonAUC_scaled > 4] = 4
+## Quick visualization.
 set.seed(43)
 Heatmap(regulonAUC_scaled, name = "TF activity\nZ-score",row_km = 5, column_km = 3, col = colorRamp2(c(-4,-3.5,-3,-2.5,-2,-1.5,-1,-0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4), magma(17)),
         top_annotation = ha,
-        right_annotation = row_ha,
         show_row_names = FALSE, show_column_names = FALSE,
         show_column_dend = FALSE,
         row_names_gp = gpar(fontsize = 8))
@@ -181,115 +231,15 @@ duplicated_tf = tmp %>%
 dup_tfs_remove = rownames(regulonAUC_scaled)[which(sapply(strsplit(rownames(regulonAUC_scaled), "_| "), "[[", 1)%in%duplicated_tf$tf & grepl("_extended", rownames(regulonAUC_scaled)))]
 tfs_to_keep_uniq = rownames(regulonAUC_scaled)[!rownames(regulonAUC_scaled)%in%dup_tfs_remove]
 
-## Or take the 10 most enriched TFs per cell state
-diff_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="differentiated"], 1, median), decreasing = TRUE)
-stem_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="stemcell"], 1, median), decreasing = TRUE)
-prol_stem_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="prolif_stemcell"], 1, median), decreasing = TRUE)
+## Take the 15 most enriched TFs per cell state. Some may overlap leading there to be fewer than 45 across the two cell states
+diff_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="Diff.-like"], 1, median), decreasing = TRUE)
+stem_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="Stem-like"], 1, median), decreasing = TRUE)
+prol_stem_rank = sort(apply(regulonAUC_scaled[tfs_to_keep_uniq, cell_state=="Prolif. stem-like"], 1, median), decreasing = TRUE)
 ranked_tfs_to_keep = unique(c(names(prol_stem_rank[1:15]), names(stem_rank[1:15]), names(diff_rank[1:15])))
 
 ## Filter the regulonAUC plot.
 regulonAUC_scaled_filt = regulonAUC_scaled[ranked_tfs_to_keep, ]
 rownames(regulonAUC_scaled_filt) <- gsub("_extended", "", rownames(regulonAUC_scaled_filt))
-
-## Include epimutation as side panel. Keep TFs in the same order as above.
-scenic_tfs_epimut_sub = scenic_tfs_epimut[rownames(regulonAUC_scaled)%in%ranked_tfs_to_keep, ]
-## Set the TFs so that they are in the same order:
-sapply(strsplit(rownames(regulonAUC_scaled_filt), "_| "), "[[", 1)==scenic_tfs_epimut_sub$tf[match(sapply(strsplit(rownames(regulonAUC_scaled_filt), "_| "), "[[", 1), scenic_tfs_epimut_sub$tf)]
-scenic_tfs_epimut_sub_ord = scenic_tfs_epimut_sub[match(sapply(strsplit(rownames(regulonAUC_scaled_filt), "_| "), "[[", 1), scenic_tfs_epimut_sub$tf), ]
-## The annotation should now be correct:
-row_ha = rowAnnotation(epimut = scenic_tfs_epimut_sub_ord$epimut,
-                       col = list(epimut = epimut_cols))
-
-
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig3/Fig3c-IDHmut-TF-activity.pdf", height = 6.545454, width = 9, bg = "transparent", useDingbats = FALSE)
-set.seed(43)
-Heatmap(regulonAUC_scaled_filt, name = "TF activity\nZ-score", row_km = 1, column_km = 1, col = colorRamp2(c(-4,-3.5,-3,-2.5,-2,-1.5,-1,-0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4), viridis(17)),
-        top_annotation = ha, 
-        right_annotation = row_ha,
-        show_row_names = TRUE, show_column_names = FALSE,
-        show_column_dend = FALSE, show_row_dend = FALSE,
-        row_names_gp = gpar(fontsize = 8))
-dev.off()
-
-## Objective: Create boxplots for IDHmut TFBS epimutation data at active TFs per cell state:
-diff_tfs = data.frame(tf = unique(sapply(strsplit(names(diff_rank), "_| "), "[[", 1))) 
-diff_tfs$diff_activity_rank = seq_len(nrow(diff_tfs))
-diff_tfs_epimut = diff_tfs %>% 
-  left_join(tfbs_epimut, by="tf") %>% 
-  filter(!is.na(IDHmut)) %>% 
-  mutate(state = "diff") %>% 
-  select(tf, activity_rank = diff_activity_rank, state, epimut = IDHmut)
-
-stem_tfs = data.frame(tf = unique(sapply(strsplit(names(stem_rank), "_| "), "[[", 1))) 
-stem_tfs$stem_activity_rank = seq_len(nrow(stem_tfs))
-stem_tfs_epimut = stem_tfs %>% 
-  left_join(tfbs_epimut, by="tf") %>% 
-  filter(!is.na(IDHmut)) %>% 
-  mutate(state = "stem") %>% 
-  select(tf = tf, activity_rank =stem_activity_rank, state, epimut = IDHmut)
-
-prol_stem_tfs = data.frame(tf = unique(sapply(strsplit(names(prol_stem_rank), "_| "), "[[", 1))) 
-prol_stem_tfs$prol_stem_activity_rank = seq_len(nrow(prol_stem_tfs))
-prol_stem_tfs_epimut = prol_stem_tfs %>% 
-  left_join(tfbs_epimut, by="tf") %>% 
-  filter(!is.na(IDHmut)) %>%
-  mutate(state = "prolif_stem") %>% 
-  select(tf, activity_rank = prol_stem_activity_rank, state, epimut = IDHmut)
-
-
-top_tf_epimut <- bind_rows(diff_tfs_epimut[1:15, ],
-                           stem_tfs_epimut[1:15, ],
-                           prol_stem_tfs_epimut[1:15, ])
-
-## Test whether the general epimutation rate differs between these three cell states.
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/IDHmut-states-TF-epimutation.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
-ggplot(top_tf_epimut, aes(x=state, y=epimut)) + 
-  geom_boxplot(outlier.shape = NA) + 
-  geom_jitter(aes(alpha = 0.4), width = 0.1) +
-  stat_compare_means(method = "kruskal") +
-  labs(y="High TF activity per cell state (RNA)\nTFBS epimutation burden (DNAm)", x="Cell state") +
-  plot_theme +
-  guides(alpha=FALSE)
-dev.off()
-
-
-## Recode plot so that it's comparbale.
-top_tf_epimut = top_tf_epimut %>% 
-  mutate(state = recode(state, "diff" = "Diff.-like",
-                        "stem" = "Stem-like",
-                        "prolif_stem" = "Prolif. stem-like"))
-
-mu = top_tf_epimut %>% 
-  group_by(state) %>% 
-  summarise(grp_mu = mean(epimut))
-
-## ks.test for diff.-like versus others.
-ks.test(top_tf_epimut$epimut[top_tf_epimut$state=="Diff.-like"], top_tf_epimut$epimut[top_tf_epimut$state=="Stem-like"])
-ks.test(top_tf_epimut$epimut[top_tf_epimut$state=="Diff.-like"], top_tf_epimut$epimut[top_tf_epimut$state=="Prolif. stem-like"])
-
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig3/SuppFig6-IDHmut-states-TF-disorder-density.pdf", height = 4, width = 5, bg = "transparent", useDingbats = FALSE)
-ggplot(top_tf_epimut, aes(x= epimut, fill=state)) +
-  geom_vline(data=mu, aes(xintercept=grp_mu, color=state),
-             linetype="dashed") +
-  scale_fill_manual(values = c("Diff.-like" = "#fcbba1",
-                               "Stem-like" = "#fb6a4a",
-                               "Prolif. stem-like" = "#a50f15")) +
-  scale_color_manual(values = c("Diff.-like" = "#fcbba1",
-                                "Stem-like" = "#fb6a4a",
-                                "Prolif. stem-like" = "#a50f15")) +
-  geom_density(alpha=0.75) +
-  labs(y="Density", x ="TFBS motif DNAme disorder (DNAm)\nHigh TF activity per cell state (RNA)", fill="Cell state") +
-  guides(color=FALSE) +
-  plot_theme +
-  theme(legend.position="bottom") +
-  annotate(geom="text", x=.5, y=18, label="Kolmogorov-Smirnov",
-           color="black") +
-  annotate(geom="text", x=.5, y=16, label="Diff vs. Stem p=0.66",
-           color="black") +
-  annotate(geom="text", x=.5, y=14, label="Diff vs. Polif. stem p=0.92",
-           color="black")
-dev.off()
-
 
 ## Gather activity by cell state.
 prolif_stem_df <- as.data.frame(prol_stem_rank)
@@ -320,11 +270,6 @@ median_activity_df_filt <- median_activity_df %>%
   mutate(tf = gsub("_extended", "", tf)) %>% 
   filter(tf%in%c(sapply(strsplit(rownames(regulonAUC_scaled_filt), "_| "), "[[", 1)))
 
-ggplot(median_activity_df_filt, aes(tf, cell_state)) +
-  geom_tile(aes(fill=activity)) +
-  scale_fill_gradientn(colours=c("#0571b0", "#92c5de", "#f4a582","#ca0020"), values=c(0, 0.5, 1, 1.5), na.value="white") +
-  labs(x="", y= "", fill="TF activity") +
-  plot_theme
 
 ## Set the TF order to be ranked for each cell state.
 tf_order <- sapply(strsplit(rownames(regulonAUC_scaled_filt), "_| "), "[[", 1)
@@ -338,7 +283,7 @@ null_y        <- theme(axis.title.y=element_blank(),
                        axis.text.y=element_blank(),
                        axis.ticks.y=element_blank())
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig3/Fig3c-IDHmut-TF-activity.pdf", height = 4, width = 7.5, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig3/Fig3c-IDHmut-TF-activity.pdf", height = 4, width = 7.5, bg = "transparent", useDingbats = FALSE)
 ggplot(median_activity_df_filt, aes(tf, cell_state)) +
   geom_tile(aes(fill=activity)) +
   scale_fill_viridis() +

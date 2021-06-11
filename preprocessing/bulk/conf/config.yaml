@@ -1,0 +1,179 @@
+## Snakemake configuration
+## @Author Floris Barthel
+
+## Boolean indicating whether the starting point should be raw source files (eg. source BAM or FASTQ to be aligned) or aligned data (eg. realigned BAM files)
+from_source: 0
+
+## Database settings
+db:
+  configfile: "/projects/verhaak-lab/SCGP-analysis/.odbc.ini"
+  configsection: "SCGP"
+
+## Data paths
+data:
+  source_path: "/projects/verhaak-lab/SCGP-analysis/data"
+  realn_path: "/projects/verhaak-lab/SCGP-analysis/results/align/bqsr"
+
+#### JSON files (as alternative to database)
+# json:
+#   cases:       "/projects/barthf/GLASS-WG/data/manifest/cases.json"
+#   samples:     "/projects/barthf/GLASS-WG/data/manifest/samples.json"
+#   aliquots:    "/projects/barthf/GLASS-WG/data/manifest/aliquots.json"
+#   files:       "/projects/barthf/GLASS-WG/data/manifest/files.json"
+#   readgroups:  "/projects/barthf/GLASS-WG/data/manifest/readgroups.json"
+#   pairs:       "/projects/barthf/GLASS-WG/data/manifest/pairs.json"
+
+## Full path to cluster settings
+cluster_json:     "conf/cluster.json"
+
+## Working directory
+#workdir:          "/fastscratch/verhaak-lab/TCGA-WG"
+
+gnomad_vcf:       "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/Mutect2/af-only-gnomad.raw.sites.b37.vcf.gz"
+funcotator_dir:   "/projects/verhaak-lab/verhaak_ref/funcotator/funcotator_dataSources.v1.6.20190124s"
+
+gencode_gtf_flat: "/projects/verhaak-lab/verhaak_ref/funcotator/funcotator_dataSources.v1.6.20190124s/gencode/gencode.v19.flattened.captured.sorted.bed"
+bedtools_genome: "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/human_g1k_v37_decoy.bed"
+
+## gatk Funcotator --variant variants.vcf --reference /projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/human_g1k_v37_decoy.fasta --ref-version hg19 --data-sources-path /projects/verhaak-lab/verhaak_ref/funcotator/funcotator_dataSources.v1.6.20190124s --output variants.funcotated.maf --output-file-format MAF --transcript-selection-mode CANONICAL --annotation-default Center:jax.org
+
+## Mutect2 settings
+mutect2:
+  ## GnomAD VCF file
+  gnomad_vcf:       "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/Mutect2/af-only-gnomad.raw.sites.b37.vcf.gz"
+  ## Tiny VCF
+  tiny_vcf:         "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/Mutect2/GetPileupSummaries/small_exac_common_3_b37.vcf.gz"
+  ## Given alleles list
+  given_alleles:    "/projects/verhaak-lab/verhaak_ref/hotspot_idh1_tert_grc37.vcf.gz"
+  ## WGS scatter intervals
+  wgs_scatterdir:   "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/scattered_wgs_intervals/scatter-50"
+  ## Based on GATK best practices RNAseq 04/05/18
+  ## https://software.broadinstitute.org/gatk/documentation/article.php?id=3891
+  ## Calculate af-of-alleles: 1/(2*123136) = 0.00000406055 (6 sign. digits)
+  af_of_alleles_not_in_resource: 0.00000406055
+
+
+## GATK CNV settings
+cnv:
+  min_contig_len: 46709983
+  
+  ## CNV intervals
+  intervals_wgs_autosomal:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/human_g1k_v37_decoy.preprocessed.10kb.autosomal.interval_list"
+  intervals_wgs_allosomal:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/human_g1k_v37_decoy.preprocessed.10kb.allosomal.interval_list"
+  
+  intervals_wes_autosomal:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/intersect_exome_hg19.filtered.preprocess.1kb.autosomal.interval_list"
+  intervals_wes_allosomal:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/intersect_exome_hg19.filtered.preprocess.1kb.allosomal.interval_list"
+  
+  intervals_wgs_autosomal_gc: "/projects/verhaak-lab/verhaak_ref/gatk-cnv/human_g1k_v37_decoy.preprocessed.10kb.autosomal.gcanno.tsv"
+  intervals_wgs_allosomal_gc: "/projects/verhaak-lab/verhaak_ref/gatk-cnv/human_g1k_v37_decoy.preprocessed.10kb.allosomal.gcanno.tsv"
+  
+  intervals_wes_autosomal_gc:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/intersect_exome_hg19.filtered.preprocess.1kb.autosomal.gcanno.tsv"
+  intervals_wes_allosomal_gc:  "/projects/verhaak-lab/verhaak_ref/gatk-cnv/intersect_exome_hg19.filtered.preprocess.1kb.allosomal.gcanno.tsv"
+
+  ## CNV common SNPs
+  hetsites:   "/projects/verhaak-lab/verhaak_ref/gatk-cnv/af-only-gnomad.raw.sites.b37.AFgt0.1.vcf.gz"
+  
+  centromere: "/projects/verhaak-lab/verhaak_ref/gatk-cnv/somatic-b37_final_centromere_hg19.seg"
+  gistic:     "/projects/verhaak-lab/verhaak_ref/gatk-cnv/somatic-b37_CNV.hg19.bypos.v1.CR1_event_added.mod.seg"
+
+  maf90_threshold: 0.485
+
+sequenza:
+  gc_ref: "/projects/verhaak-lab/verhaak_ref/sequenza/g1k_v37_decoy.gc1000Base.txt.gz"
+  min_mapq: 20
+  bin_size: 1000
+  kmin: 10
+  break_method: "het"
+
+
+
+## HTML dir
+# @sbamin helix ~/ has 50GB limit. multiqc and fastqc files may grow in size.
+html_dir:         "/home/barthf/ShinyApps/"
+
+#### GLOBAL PARAMETERS
+
+## Full path to GDC keyfile
+gdc_token:        "/home/barthf/gdc-user-token.2018-05-23T11_13_25-04_00.txt"
+
+## Temporary directory
+tempdir:          "/fastscratch/verhaak-temp"
+
+## SV mask
+svmask_lumpy:     "/projects/barthf/GLASS-WG/data/ref/human_g1k_v37_decoy_svmask_lumpy.bed"
+svmask_delly:     "/projects/barthf/GLASS-WG/data/ref/human.hg19.excl.tsv"
+svinclude_manta:  "/projects/barthf/GLASS-WG/data/ref/human_g1k_v37_decoy_svinclude_manta.bed.gz"
+
+## Exome capture common regions
+common_exome_capture_bed: "/projects/verhaak-lab/verhaak_ref/exome-capture/Intersect_Exome_hg19.filtered.bed"
+
+## CNVnator
+cnvnator_binsize: 1000
+cnvnator_chrom:   "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 X Y"
+cnvnator_refdir:  "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/human_g1k_v37_decoy"
+svtyper_batch:    1000
+svtyper_reads:    1000
+
+## Telseq
+telseq_r:         160 
+
+## Reference genome
+reference_fasta:  "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/human_g1k_v37_decoy.fasta"
+
+## Reference dictionary
+reference_dict:   "/projects/verhaak-lab/verhaak_ref/gatk-legacy-bundles/b37/human_g1k_v37_decoy.dict"
+
+#Optitype HLA reference
+hla_ref:   "/projects/verhaak-lab/verhaak_ref/hla_ref/optitype/hla_reference_dna.fasta"
+
+## Vcf2MAF Perl Script location
+vcf2maf:          "/projects/verhaak-lab/mskcc-vcf2maf-747a1bb/vcf2maf.pl"
+
+## VEP installation
+veppath:          "/projects/varnf/SofWar/ensembl-vep"        #"/projects/barthf/opt/ensembl-vep"
+
+## VEP cache directory
+#vepdata:          "/projects/verhaak-lab/verhaak_ref/vep" #"/projects/barthf/opt/.vep"
+vepdata:    "/projects/varnf/SofWar/ensembl-vep/reference/"   #need to reconcile
+
+## VEP plugin directory
+vepplugins:       "/projects/varnf/SofWar/VEP_plugins/"
+
+## pVACseq iedb install directory 
+iedb:             "/projects/varnf/SofWar/pvactools/IEDB/"
+
+## Kallisto index
+kallisto_idx:  "/projects/varnf/SofWar/kallisto/Ensembl_v75_homo_sapiens/homo_sapiens/transcriptome.idx"
+kallisto_gtf:  "/projects/varnf/SofWar/kallisto/Ensembl_v75_homo_sapiens/homo_sapiens/Homo_sapiens.GRCh37.75.gtf"
+kallisto_ref:  "/projects/varnf/SofWar/kallisto/Ensembl_v75_homo_sapiens/homo_sapiens/Homo_sapiens.GRCh37.75.cdna.all.fa"
+
+## Kallisto mapping
+ensembl_transcript_mapping: "/projects/varnf/SofWar/kallisto/Ensembl_v75_homo_sapiens/homo_sapiens/transcripts_to_genes.txt"
+
+seconds_between_progress_updates: 900
+
+## JAVA options
+samtofastq_java_opt: "'-Dsamjdk.buffer_size=131072 -Dsamjdk.compression_level=1 -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10 -Xmx128m'"
+mergebamalignment_java_opt: "'-Dsamjdk.buffer_size=131072 -Dsamjdk.use_async_io=true -Dsamjdk.compression_level=1 -XX:+UseStringCache -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=10 -Xmx5000m'"
+
+#### ACTUAL RUN
+revertsam_extra_args: "--MAX_DISCARD_FRACTION=0.02 "
+
+### Haplotyping options
+## These options are mostly used for creating the haplotype map
+## The output file (`file`) can then be used for fingerprinting
+
+haplotype_map:
+  file: "/projects/barthf/GLASS-WG/data/ref/haplotype.filtered.map"
+  ld_script: "/projects/barthf/GLASS-WG/sandbox/ldsc/ldsc.py"
+  header: "/projects/barthf/GLASS-WG/data/ref/haplotype_map_header.txt"
+  similarity: 0.10
+  min_maf: 0.10
+  ld_score_window_autosome: 1.0
+  prune_window: 1500
+  prune_slide: 5
+  prune_cutoff: 0.1
+  clump_cutoff: 0.9
+  max_distance_clump: 1500
+
+## END ##

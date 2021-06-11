@@ -38,8 +38,8 @@ transcript_tpm <- dbReadTable(con,  Id(schema="analysis", table="transcript_tpm"
 gene_tpm <- dbReadTable(con,  Id(schema="analysis", table="gene_tpm"))
 
 ## Output expression table for upload to Synapse.
-write.table(gene_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_gene_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
-write.table(transcript_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_transcript_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
+##write.table(gene_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_gene_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
+##write.table(transcript_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_transcript_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
 
 
 ## Create a gene x sample matrix.
@@ -85,31 +85,34 @@ cor.test(random_gsea, stress_gsea, method="spearman")
 #############################
 ### General epimutation rate
 #############################
-epimut_cpg <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Samples_pdr_score_table-all_single_cells.txt", sep="\t", header=T, stringsAsFactors = F)
+epiallele_info <- read.table(file="/Users/johnsk/mnt/verhaak-lab/scgp/results/epimutation/rerun-reformatted_deduplicated-final_recalculated/Samples-passQC_single_cells_global_and_context-specific_pdr_score_table.txt", sep="\t", header=T, stringsAsFactors = F)
 
-## Load in the quality control data for these samples.
-rrbs_qc <- read.table(file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/scgp_cnv_status.txt", sep="\t", header=T, stringsAsFactors = F)
+## Additional information about single-cells passing QC.
+rrbs_qc <- read.table(file="/Users/johnsk/github/data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
 
-## Restrict to the samples that pass the general QC guidelines of CpG count, bisulfite conversion, and cell number.
+## Restrict to the samples that pass the general QC guidelines of CpG count, bisulfite conversion, and tumor status (inferred CNVs).
 rrbs_qc_pass <- rrbs_qc %>% 
-  filter(cell_num == 1, cpg_unique > 40000, conversion_rate > 95, tumor_cnv == 1) %>% 
-  mutate(case_barcode = gsub("-", "", substr(sample, 6, 11))) 
+  filter(cpg_unique > 40000, bisulfite_conversion_rate > 95, tumor_status == 1) 
 
-## Calculate the mean epimutation for each tumor.
-epimut_mean <- epimut_cpg %>% 
-  filter(Sample%in%rrbs_qc_pass$sample_barcode) %>% 
-  group_by(Patient) %>% 
-  summarise(epimut_mean = mean(PDR)) %>% 
+## Calculate the mean disorder for each tumor.
+disorder_mean <- epiallele_info %>% 
+  filter(sample_barcode%in%rrbs_qc_pass$cell_barcode) %>% 
+  mutate(case_barcode = gsub("-", "", substr(sample_barcode, 6, 11))) %>% 
+  group_by(case_barcode) %>% 
+  summarise(disorder_mean = mean(PDR)) %>% 
   ungroup() %>% 
-  dplyr::select(case_barcode = Patient, epimutation = epimut_mean) %>% 
+  select(case_barcode, disorder = disorder_mean) %>% 
   filter(!case_barcode%in%c("SM015", "SM008", "UC917"))
 
-## They seem to be tightly correlated. 
-cor.test(epimut_mean$epimutation, as.numeric(stress_gsea), method="s")
-cor.test(epimut_mean$epimutation, as.numeric(harris_gsea), method="s")
+## Sanity check that data are aligned.
+gsub("-", "", substr(colnames(stress_gsea), 6, 11))==disorder_mean$case_barcode
+
+## They appear to be tightly correlated. 
+cor.test(disorder_mean$disorder, as.numeric(stress_gsea), method="s")
+cor.test(disorder_mean$disorder, as.numeric(harris_gsea), method="s")
 
 ## Combine into a single data.frame for interpretation of results.
-epimut_stress = cbind(epimut_mean, as.numeric(harris_gsea), as.numeric(stress_gsea), as.numeric(ox_stress_gsea), as.numeric(random_gsea))
+epimut_stress = cbind(disorder_mean, as.numeric(harris_gsea), as.numeric(stress_gsea), as.numeric(ox_stress_gsea), as.numeric(random_gsea))
 colnames(epimut_stress)[3:6] = c("HARRIS_HYPOXIA_ssGSEA", "GO_RESPONSE_TO_STRESS_ssGSEA", "GO_RESPONSE_TO_OX_STRESS_ssGSEA", "RANDOM_ssGSEA")
 epimut_stress$idh_status <- ifelse(epimut_stress$case_barcode%in%c("SM001", "SM002", "SM004"), "IDHmut", "IDHwt")
 
@@ -121,7 +124,7 @@ epimut_stress_long = epimut_stress %>%
                           "RANDOM_ssGSEA" = "Random genes"))
 
 pdf("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5disorder-RNA-ssGSEAv2.pdf", height=4, width=7.5, useDingbats = FALSE, bg="transparent")
-ggplot(epimut_stress_long, aes(x=ssGSEA, y=epimutation)) + 
+ggplot(epimut_stress_long, aes(x=ssGSEA, y=disorder)) + 
   geom_point() +
   geom_smooth(method="lm", se = FALSE) +
   stat_cor(method="s") + 
