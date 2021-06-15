@@ -33,7 +33,7 @@
   scRRBS_qc <- read.csv("analysis_scRRBS_sequencing_qc.csv")
   
   # Load metrics for CpG density overlapping TFBS motifs
-  cpg_density_info <- read.delim("scRRBS_epiallele_CpG_density_summary.txt")
+  cpg_density_info <- read.delim("analysis_scRRBS_epiallele_CpG_density_summary.tsv")
   
   # Load TFBS motif DNAme disorder (available on Synapse)
   tf_pdr <- read.csv("analysis_scRRBS_individual_TFBS_motif_DNAme_disorder.csv")
