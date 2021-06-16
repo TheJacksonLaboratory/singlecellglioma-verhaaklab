@@ -1,12 +1,14 @@
 ##################################
 # Unsupervised clustering of tumor scRRBS data.
-# Updated: 2020.03.21
+# Updated: 2021.06.13
 # Author: Kevin J.
 ###################################
 
 ## Based on tutorial: https://github.com/hui-tony-zk/PDclust
 
-# HPC working directory for this analysis on Helix.
+## HPC working directory for this analysis. 
+## These files are available on Synapse stitched together as `analysis_scRRBS_bismark_coverage.txt.gz`
+## and `analysis_RRBS_50cell_bismark_coverage.txt.gz`
 mybasedir = "/Users/johnsk/mnt/verhaak-lab/scgp/"
 datadir  = "/Users/johnsk/mnt/verhaak-lab/scgp/results/scRRBS/human/rerun-dedup_bed_graph"
 pattern   = '_pe.deduplicated.bismark.cov.gz$'
@@ -145,12 +147,12 @@ ggplot(scgp_cluster_results_annot, aes(V1, V2, color = mnp_classification_epic, 
         axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
         axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
-pdf(file = "/Users/johnsk/github/results/Fig1/Fig1b-PDclust.pdf", width = 7, height = 5)
+pdf(file = "results/Fig1/Fig1b-PDclust.pdf", width = 7, height = 5)
 ggplot(scgp_cluster_results_annot, aes(V1, V2, color = case_barcode, shape = factor(cell_num), size = factor(cell_num))) +
   geom_point(alpha = 0.8) + 
   scale_color_manual(values=c("SM001" = "#F8766D", "SM002" = "#DB8E00", "SM004" = "#AEA200", "SM006" = "#64B200",
                               "SM008" = "#00BD5C" , "SM011" = "#00C1A7", "SM012" =  "#00BADE", "SM015" = "#00A6FF",
-                              "SM017" = "#B385FF", "SM018" = "#EF67EB", "UC917" = "#FF63B6")) +
+                              "SM017" = "#B385FF", "SM018" = "#EF67EB", "SM019" = "#FF63B6")) +
   labs(x= "MDS Dimension 1", y = "MDS Dimension 2", color="Subject", shape = "Tumor cell\nnumber") +
   guides(size=FALSE) +
   plot_theme +
@@ -160,7 +162,7 @@ ggplot(scgp_cluster_results_annot, aes(V1, V2, color = case_barcode, shape = fac
         legend.title = element_text(hjust = 0.5))
 dev.off()
 
-pdf(file = "/Users/johnsk/github/results/Fig1/bisulfite-conversion-rates.pdf", width = 9, height = 5)
+pdf(file = "results/Fig1/bisulfite-conversion-rates.pdf", width = 9, height = 5)
 ggplot(scgp_cluster_results_annot, aes(V1, V2, color = bisulfite_conversion_rate, shape = factor(cell_num), size = factor(cell_num))) +
   geom_point() + 
   xlab("MDS Dimension 1") + 

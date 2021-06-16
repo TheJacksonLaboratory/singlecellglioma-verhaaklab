@@ -5,7 +5,7 @@
 ###################################
 
 # Working directory for this analysis.
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###################################
@@ -18,7 +18,6 @@ library(survminer)
 library(survival)
 library(EnvStats)
 ###################################
-
 
 ## Generate plot theme.
 plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size = 12),
@@ -38,8 +37,8 @@ con <- DBI::dbConnect(odbc::odbc(), "VerhaakDB3")
 chr_arms = dbReadTable(con,  Id(schema="ref", table="chr_arms"))
 
 ## Load the metadata available from Klughammer (http://www.medical-epigenomics.org/papers/GBMatch/).
-klughammer_dat_all <- read.delim("/Users/johnsk/Documents/Single-Cell-DNAmethylation/public-rrbs/GBMatch-master/GBMatch_sampleAnnotation.tsv", sep="\t", header=T, stringsAsFactors = F)
-klughammer_dict <- read.delim("/Users/johnsk/Documents/Single-Cell-DNAmethylation/public-rrbs/GBMatch-master/GBMatch_columnAnnotation.tsv", sep="\t", header=T, stringsAsFactors = F)
+klughammer_dat_all <- read.delim("data/GBMatch_sampleAnnotation.tsv", sep="\t", header=T, stringsAsFactors = F)
+klughammer_dict <- read.delim("data/GBMatch_columnAnnotation.tsv", sep="\t", header=T, stringsAsFactors = F)
 
 # Restrict to tumor tissue by removing non-tumor tissue from epilepsy patients. Add some additional filtering criteria.
 klughammer_dat = klughammer_dat_all %>% 
@@ -78,6 +77,7 @@ klughammer_cnv = klughammer_dat %>%
             X_p_deletion, X_q_deletion, Y_p_deletion, Y_q_deletion))
 
 ## Calculate the total bases affected by copy number alteration.
+# FGA = fraction of genome with copy number alterations.
 klughammer_fga = klughammer_cnv %>% 
   ## Retrieve the amplification estimates for 22 autosomes.
   mutate(amp_bp = apply(klughammer_cnv[, 8:49], 1, sum, na.rm=TRUE),
@@ -90,7 +90,7 @@ chrom_amp_max <- apply(klughammer_cnv[, 8:49], 2, max, na.rm=TRUE)
 chrom_del_max <- apply(klughammer_cnv[, 50:91], 2, max, na.rm=TRUE)
 
 ## There were 46 samples that had no amplifications or deletions. 
-## This would be VERY unusual in glioma so filtering out as these are likely low purity or quality.
+## This would be HIGH:Y unusual in glioma so filtering out as these are likely low purity or quality.
 sum(klughammer_fga$del_bp==0 & klughammer_fga$amp_bp==0)
 
 ## Remove these samples from analysis, as they likely represent contaminating normal or low quality segmentations.
@@ -134,7 +134,7 @@ disorder_assoc <- data.frame(pvalues, sign, variables)
 disorder_assoc$variables <- factor(disorder_assoc$variables, levels = c("Age", "Timepoint", "Proliferation\n(MIB staining)", "SCNA"))
 
 ## Can demonstrate that copy number alterations are associated with DNAme disorder.
-pdf(file = "github/results/Fig5/klughammer-disorder-vars.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig5/klughammer-disorder-vars.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
 ggplot(disorder_assoc, aes(x=variables,  y=-log10(pvalues), size = -log10(pvalues), color = sign)) + 
   geom_point() + 
   geom_hline(yintercept = -log10(0.05), alpha=0.8, linetype=2) +
@@ -158,6 +158,9 @@ ggplot(klughammer_fga_filtered_wt, aes(x=total_fga,  y=mean_pdr, color=idh_statu
   stat_cor(method = "spearman", label.x = 0.4) +
   guides(color=FALSE)
 dev.off()
+
+## What's the breakdown by sample type?
+table(klughammer_fga_filtered_wt$timepoint)
 
 ##############################################################
 ### Analyze longitudinal changes in SCNA and DNAme disorder. 
@@ -194,7 +197,7 @@ long_meta_data = klughammer_fga_filtered %>%
   select(patID, idh_codel_subtype) %>% 
   distinct()
 
-## There should be 110 distinct ind. for whose genomic data passed QC.
+## There should be distinct ind. for whose genomic data passed QC.
 long_instability = long_fga %>%
   inner_join(long_epi_mut, by="patID") %>% 
   inner_join(long_meta_data, by="patID")
@@ -206,7 +209,7 @@ long_instability_idh_wt = long_instability %>%
 
 
 ## Restrict only to the IDHwt tumors to aid in clarity.
-pdf(file = "github/results/Fig5/Fig5d-longitudinal-SCNA-disorder.pdf", height = 4, width = 4, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig5/Fig5d-longitudinal-SCNA-disorder.pdf", height = 4, width = 4, bg = "transparent", useDingbats = FALSE)
 ggplot(long_instability_idh_wt, aes(x=aneuploidy_diff,  y=disorder_diff, color=idh_codel_subtype)) + 
   geom_point() + ylab("Delta DNAme disorder\n (Recurrence - Initial)") + xlab("Delta SCNA burden\n(Recurrence - Initial)") +
   theme_bw() + geom_smooth(method = "lm") +   
@@ -225,12 +228,12 @@ klughammer_clin = klughammer_dat %>%
   select(patID, Age, IDH, timeToFirstProg, timeToSecSurg, VitalStatus, DateOfDeath_LastFollow.up, 
          Follow.up_years, treatment, Sex) %>% 
   mutate(patient_vital = ifelse(VitalStatus=="alive", 0, 1),
+         ## All patients had a second surgery event.
          patient_vital_surgical_int = 1) 
 ## Only retain the first instance for a particular patient.
 klughammer_clin_filt = klughammer_clin[match(unique(klughammer_clin$patID), klughammer_clin$patID), ]
 
 ## Create a set of data.frames on which to perform survival analyses.
-## It seems that `pat123` and `pat124` were post-treatment at initial disease.
 long_instability_clin_wt = long_instability %>% 
   left_join(klughammer_clin_filt, by="patID") %>% 
   ungroup() %>% 
@@ -264,29 +267,23 @@ summary(diff_pdr_cox)
 ## Generate visualizations based on groupings:
 fit_wt_os <- survfit(Surv(Follow.up_years, patient_vital) ~ disorder_diff_group,
                       data = long_instability_clin_wt)
-pdf(file = "results/methylation/public/klughammer-disorder-diff-overall-survival.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
 ggsurvplot(fit_wt_os, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(6, 0.75),
            palette = c("royalblue4", "tomato3"),
            ylab = "Overall survival\n probability", xlab = "Time (years)")
-dev.off()
 
 ## Examining only the primary tumor samples.
 fit_wt_os_primary <- survfit(Surv(Follow.up_years, patient_vital) ~ primary_disorder_group,
                      data = long_instability_clin_wt)
-pdf(file = "results/methylation/public/klughammer-disorder-group-primary-overall-survival.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
 ggsurvplot(fit_wt_os_primary, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(6, 0.75),
            palette = c("royalblue4", "tomato3"),
            ylab = "Overall survival\n probability", xlab = "Time (years)")
-dev.off()
 
 ## Examining only the recurrent tumor samples.
 fit_wt_os_recurence <- survfit(Surv(Follow.up_years, patient_vital) ~ recurrence_disorder_group,
                              data = long_instability_clin_wt)
-pdf(file = "results/methylation/public/klughammer-disorder-group-recurrence-overall-survival.pdf", height = 5, width = 8, bg = "transparent", useDingbats = FALSE)
 ggsurvplot(fit_wt_os_recurence, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(6, 0.75),
            palette = c("royalblue4", "tomato3"),
            ylab = "Overall survival\n probability", xlab = "Time (years)")
-dev.off()
 
 
 ##############################################
@@ -305,38 +302,15 @@ summary(pdr_surg_cox_bi)
 pdr_surg_cox_bi <- coxph(Surv(timeToSecSurg, patient_vital_surgical_int) ~ Age + Sex + disorder_diff_group + aneuploidy_diff, data = long_instability_clin_wt)
 summary(pdr_surg_cox_bi)
 
-## What percentage of these two tissues are the same for the two different progression variables.
-sum(long_instability_clin_wt$timeToSecSurg==long_instability_clin_wt$timeToFirstProg)/length(long_instability_clin_wt$timeToFirstProg)
-
-## Assess the time to first progression (assuming MRI). More subjective measure.
-pdr_prog_cox <- coxph(Surv(timeToFirstProg, patient_vital_surgical_int) ~ Age + Sex + disorder_diff, data = long_instability_clin_wt)
-summary(pdr_prog_cox)
-pdr_prog_cox <- coxph(Surv(timeToFirstProg, patient_vital_surgical_int) ~ Age + Sex + disorder_diff_group, data = long_instability_clin_wt)
-summary(pdr_prog_cox)
-
-## Again, the survival relationship gets stronger when including a purity proxy.
-pdr_prog_cox <- coxph(Surv(timeToFirstProg, patient_vital_surgical_int) ~ Age + Sex + disorder_diff + aneuploidy_diff, data = long_instability_clin_wt)
-summary(pdr_prog_cox)
-pdr_prog_cox <- coxph(Surv(timeToFirstProg, patient_vital_surgical_int) ~ Age + Sex + disorder_diff_group + aneuploidy_diff, data = long_instability_clin_wt)
-summary(pdr_prog_cox)
 
 ## Generate visualizations based on groupings:
 fit_wt_pdr <- survfit(Surv(timeToSecSurg.mo, patient_vital_surgical_int) ~ disorder_diff_group,
                              data = long_instability_clin_wt)
-pdf(file = "github/results/Fig5/Fig5e-disorder-diff-secondsurg.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig5/Fig5e-disorder-diff-secondsurg.pdf", height = 4, width = 6, bg = "transparent", useDingbats = FALSE)
 ggsurvplot(fit_wt_pdr, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(30, 0.75),
            palette = c("royalblue4", "tomato3"),
            ylab = "Time to Second Surgery\n probability", xlab = "Time (months)")
 dev.off()
 
-## Visualize the time to first progression (MRI) in months. 
-fit_wt_pdr <- survfit(Surv(timeToFirstProg.mo, patient_vital_surgical_int) ~ disorder_diff_group,
-                      data = long_instability_clin_wt)
-pdf(file = "results/methylation/public/klughammer-epimut-diff-pfs.pdf", height = 6, width = 8, bg = "transparent", useDingbats = FALSE)
-ggsurvplot(fit_wt_pdr, data = long_instability_clin_wt, risk.table = FALSE, pval= TRUE, pval.coord = c(30, 0.75),
-           palette = c("tomato3", "royalblue4"),
-           ylab = "Progression Free Survival\n probability", xlab = "Time (months)")
-dev.off()
 
 #### END #####
-

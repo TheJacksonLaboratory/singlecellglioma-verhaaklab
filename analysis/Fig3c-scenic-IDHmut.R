@@ -39,7 +39,7 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
 ## Load the 10X data for all tumor samples.
-load("/Users/johnsk/github/data/analysis_scRNAseq_tumor_gene_expression.Rds")
+load("data/analysis_scRNAseq_tumor_gene_expression.Rds")
 
 ## Change to HUGO gene name.
 rownames(expr_norm_data)[1:24703] <- featuredata[1:24703, "Associated.Gene.Name"]
@@ -74,7 +74,7 @@ clust_annot_sample <- clust_annot[down_sample, ]
 # Make sure that the same cells are being subsetted.
 all(colnames(expr_norm_data_sample)==clust_annot_sample$cell_barcode)
 
-## Only raw counts.
+## Untransformed data.
 raw_cpm = exp(expr_norm_data_sample[c(1:24703), ])-1
 
 ## Create a Seurat object using raw counts.
@@ -169,7 +169,7 @@ runSCENIC_4_aucell_binarize(scenicOptions, skipBoxplot = FALSE, skipHeatmaps = F
 
 
 ################################
-### Re-load SCENIC results
+### Re-load SCENIC results - that can be derived from scripts above
 ################################
 auc_rankings <- readRDS("data/SCENIC/IDHmut/3.3_aucellRankings.Rds")
 regulonAUC <- readRDS("data/SCENIC/IDHmut/3.4_regulonAUC.Rds")

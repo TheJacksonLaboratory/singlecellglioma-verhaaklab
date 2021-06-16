@@ -52,7 +52,7 @@ hf2354_obj <- hf2354_obj %>%
 DimPlot(hf2354_obj) 
 
 ## Load the metadata including cell states and UMAP coordinates.
-hf2354_metadata = read.csv("/Users/johnsk/github/data/analysis_scRNAseq_stress_hf2354_metadata.csv", sep = ",", stringsAsFactors = F, header = T)
+hf2354_metadata = read.csv("data/analysis_scRNAseq_stress_hf2354_metadata.csv", sep = ",", stringsAsFactors = F, header = T)
 
 ## Add metadata to Seurat object.
 all(rownames(hf2354_obj@meta.data)==hf2354_metadata$cell_barcode)

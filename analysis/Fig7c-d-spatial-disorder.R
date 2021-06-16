@@ -5,6 +5,11 @@
 ##################################################
 
 ## Objective: Use the FRONTIER data to determine relationship between disorder and spatial location.
+## FRONTIER data from PMID: 34049406
+
+# Working directory for this analysis in the SCGP project. 
+mybasedir = "/Users/johnsk/github/"
+setwd(mybasedir)
 
 ########################################
 # Necessary packages:
@@ -24,9 +29,9 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
-### Load relevant samples from FRONTIER data [entitled `all_data`].
-load('/Users/johnsk/Documents/Single-Cell-DNAmethylation/450k/data/frontier/FRONTIER.QC.filtered.normalized.anno.final.Rdata')
-epimut_high = readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/high-epimutation-genebody-all-scRRBS.Rds")
+### Load relevant samples from FRONTIER data [entitled `all_data`] with pre-processing described in Verburg et al. Neuro Oncology
+load('data/FRONTIER.QC.filtered.normalized.anno.final.Rdata')
+epimut_high = readRDS("data/high-epimutation-genebody-all-scRRBS.Rds")
 
 ### Relabel the tumor samples so that they can be grouped together.
 all_data$Sample_Type[all_data$Sample_Type %in% c("Initial", "Recurrence", "Recurrence2", "Recurrence3")] = "Sample"
@@ -52,41 +57,16 @@ eITH <- as.data.frame(colSums(all_b)/dim(all_b)[1])
 eITH$idat <- rownames(eITH)
 colnames(eITH)[1] <- "eITH"
 
-##############################
-### Apply mDNAsi to FRONTIER
-##############################
-load("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Files_OneClassModel_450K/pcbc-stemsig.p219.Rda")
-w <- mm$w
-w_filt = w[names(w)%in%rownames(all_b)]
-X <- all_b[as.character(names(w_filt)),]
-
-# Convert `X` into a matrix
-X <- as.matrix(X)
-
-# Score via linear model. The resulting variable `ss` will be row vector 9627 in length 
-ss <- t(w_filt) %*% X
-
-## Scale the scores into a ratio from 0 to 1 and store as data frame. 
-ss <- ss - min(ss)
-ss <- ss / max(ss)
-ss <- as.data.frame(t(ss))
-colnames(ss) <- "mDNAsi"   
-ss$Sentrix_Accession <- rownames(ss)
-
-## There's a need to demonstrate that this method would provide higher values in tumor compared with normal tissues.
+#####################################################
+### Visualize across different regions of the tumor
+#####################################################
+## Retrieve some of the metadata.
 meta_data = pData(all_data) %>% 
   as.data.frame() %>% 
-  left_join(eITH, by=c("Sentrix_Accession"="idat")) %>%  
-  left_join(ss, by="Sentrix_Accession")
+  left_join(eITH, by=c("Sentrix_Accession"="idat")) 
 
-## Produce a boxplot representation of the eITH across DKFZ normal tissues and tumor samples.
-ggplot(meta_data, aes(x=Dataset, y=eITH)) + geom_boxplot()
-ggplot(meta_data, aes(x=Dataset, y=mDNAsi)) + geom_boxplot()
-ggplot(meta_data, aes(x=eITH, y=mDNAsi)) + geom_point()
-
-## Open coordinates for the spatial mapping
-imaging_dat = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/clinical/FRONTIER.imaging-K2.081419.csv", sep = ",", header = T)
-
+## Open coordinates for the spatial mapping.
+imaging_dat = read.table("data/FRONTIER.imaging-K2.081419.csv", sep = ",", header = T)
 
 ## IDH-wt tumors:
 meta_data_wt = meta_data %>% 
@@ -105,7 +85,7 @@ cor.test(meta_data_wt$eITH[meta_data_wt$Patient=="Vumc-13"], meta_data_wt$Dist_t
 cor.test(meta_data_wt$eITH[meta_data_wt$Patient=="Vumc-17"], meta_data_wt$Dist_to_CE_surface[meta_data_wt$Patient=="Vumc-17"], method="s")
 cor.test(meta_data_wt$eITH, meta_data_wt$Dist_to_CE_surface, method="s")
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig7/Fig7c-IDHwt-spatial.pdf", width = 4, height = 3, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig7/Fig7c-IDHwt-spatial.pdf", width = 4, height = 3, useDingbats = FALSE, bg="transparent")
 ggplot(meta_data_wt, aes(x=Dist_to_CE_surface, y=eITH, color=Patient)) + geom_point() +
   geom_smooth(method = "lm", se = FALSE) +
   plot_theme +
@@ -117,11 +97,10 @@ cor.test(meta_data_wt$eITH, meta_data_wt$Dist_to_CE_surface, method="s")
 eITH_model <- glm(meta_data_wt$eITH~meta_data_wt$Dist_to_CE_surface+meta_data_wt$Patient, family = "gaussian")
 summary(eITH_model)
 
+## Using a normalized metric with similar significnt results. However, the normalization loses interpretability.
 ggplot(meta_data_wt, aes(x=Normalized_dist_to_CE_surface, y=eITH, color=Patient)) + geom_point() +
   geom_smooth(method = "lm") 
 cor.test(meta_data_wt$eITH, meta_data_wt$Normalized_dist_to_CE_surface, method="s")
-
-
 eITH_model <- glm(meta_data_wt$eITH~meta_data_wt$Normalized_dist_to_CE_surface+meta_data_wt$Patient, family = "gaussian")
 summary(eITH_model)
 
@@ -142,7 +121,7 @@ cor.test(meta_data_mut$eITH[meta_data_mut$Patient=="Vumc-10"], meta_data_mut$Dis
 cor.test(meta_data_mut$eITH[meta_data_mut$Patient=="Vumc-12"], meta_data_mut$Dist_to_nCE_surface[meta_data_mut$Patient=="Vumc-12"], method="s")
 cor.test(meta_data_mut$eITH[meta_data_mut$Patient=="Vumc-15"], meta_data_mut$Dist_to_nCE_surface[meta_data_mut$Patient=="Vumc-15"], method="s")
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig7/Fig7d-IDHmut-spatial.pdf", width = 4, height = 3, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig7/Fig7d-IDHmut-spatial.pdf", width = 4, height = 3, useDingbats = FALSE, bg="transparent")
 ggplot(meta_data_mut, aes(x=Dist_to_nCE_surface, y=eITH, color=Patient)) + 
   geom_point() +
   geom_smooth(method = "lm", se=FALSE) +
@@ -151,7 +130,7 @@ ggplot(meta_data_mut, aes(x=Dist_to_nCE_surface, y=eITH, color=Patient)) +
   labs(x="Distance to non-enhancement surface (mm)", y="Bulk DNAme disorder", color="IDHmut patients")
 dev.off()
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig7/Fig7d-IDHmut-spatial-legend.pdf", width = 6, height = 3, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig7/Fig7d-IDHmut-spatial-legend.pdf", width = 6, height = 3, useDingbats = FALSE, bg="transparent")
 ggplot(meta_data_mut, aes(x=Dist_to_nCE_surface, y=eITH, color=Patient)) + 
   geom_point() +
   geom_smooth(method = "lm", se=FALSE) +
@@ -161,10 +140,12 @@ ggplot(meta_data_mut, aes(x=Dist_to_nCE_surface, y=eITH, color=Patient)) +
 dev.off()
 cor.test(meta_data_mut$eITH, meta_data_mut$Dist_to_nCE_surface, method="s")
 
+## Similar to IDHwt - also test normalized metric.
 ggplot(meta_data_mut, aes(x=Normalized_dist_to_nCE_surface, y=eITH, color=Patient)) + geom_point() +
   geom_smooth(method = "lm") 
 cor.test(meta_data_mut$eITH, meta_data_mut$Normalized_dist_to_nCE_surface, method="s")
 
+## Not significant when including patient specific method.
 eITH_model <- glm(meta_data_mut$eITH~meta_data_mut$Dist_to_nCE_surface+meta_data_mut$Patient, family = "gaussian")
 summary(eITH_model)
 
@@ -172,11 +153,3 @@ eITH_model <- glm(meta_data_mut$eITH~meta_data_mut$Normalized_dist_to_nCE_surfac
 summary(eITH_model)
 
 #### END ####
-
-
-
-
-
-
-
-

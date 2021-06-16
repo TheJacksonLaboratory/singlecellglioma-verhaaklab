@@ -5,7 +5,7 @@
 ##################################################
 
 # Working directory for this analysis in the SCGP-analysis project. 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ########################################
@@ -35,18 +35,16 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
 
 ######### CLINICAL ##########
 ## Load in clinical data (subtype, age, treatment, hypermutation_status).
-# Supply metadata so that 10X filenames and samples can be linked together.
-metadata = readWorkbook("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/clinical/scgp-subject-metadata.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
-metadata$`10X_id_short` <- as.character(metadata$`10X_id_short`)
-clin_data = metadata %>% 
-  mutate(case_barcode = gsub("-", "", substr(subject_id, 6, 11)),
-         idh_status = ifelse(subtype=="IDHwt", "IDHwt", "IDHmut")) %>% 
-  select(case_barcode, idh_status, grade = who_grade, timepoint = initial_recurrence,  is_hypermutator = hypermutation)
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
+clin_data = meta_data %>% 
+  mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut"),
+         is_hypermutator = ifelse(case_barcode == "SM011", 1, 0)) %>% 
+  select(case_barcode, idh_status, idh_codel_subtype, grade = who_grade, timepoint = time_point,  is_hypermutator)
 
 
 ########### SINGLE CELL #############
 ## Load in proportions of cell types as defined by all captured AND by Suva classifications.
-neftel_class = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/cell-state-labels-IDHwt.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
+neftel_class = read.table("data/cell-state-labels-IDHwt.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
 neftel_class = neftel_class %>% 
   mutate(cell_type = recode(cell_type, "Prolif.-Stem-like" = "Prolif. stem-like"))
 
@@ -70,7 +68,7 @@ ggplot(neftel_prop, aes(x = case_barcode, y = freq, fill=class_neftel)) +
   plot_theme 
 
 
-venteicher_class = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/cell-state-labels-IDHmut.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
+venteicher_class = read.table("data/cell-state-labels-IDHmut.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
 venteicher_prop = venteicher_class %>% 
   select(case_barcode, class) %>% 
   left_join(clin_data, by = "case_barcode") %>% 
@@ -195,7 +193,7 @@ gg_blank <-
 ######################
 ## Clinical data  ####
 ######################
-case_order <- c("SM004", "SM001", "SM015", "UC917", "SM002", "SM008", "SM006", "SM012", "SM017", "SM018", "SM011")
+case_order <- c("SM004", "SM001", "SM015", "SM019", "SM002", "SM008", "SM006", "SM012", "SM017", "SM018", "SM011")
 clin_data <- clin_data %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 
 ########################
@@ -259,10 +257,8 @@ gg_clust_annot <-
 testPlot(gg_clust_annot)
 
 ### Create extra plot enumerating proportions.
-pdf("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/tumor-scgp-cellstates.pdf", width = 6, height = 4)
  testPlot(gg_clust_annot) +
   geom_text(aes(label = round(freq, 2)), size = 2, hjust = 0.5, vjust = 3, position ="stack") 
-dev.off()
 
 
 
@@ -289,12 +285,12 @@ g$heights[panels] <- unit(c(0.5,0.5), "null")
 plot(g)
 plot(gleg)
 
-pdf(file = "github/results/Fig3/SuppFig6d-cell-states-compare.pdf", width = 6, height = 5, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig3/SuppFig6d-cell-states-compare.pdf", width = 6, height = 5, useDingbats = FALSE, bg="transparent")
 grid.newpage()
 grid.draw(g)
 dev.off()
 
-pdf(file = "github/results/Fig3/SuppFig6d-cell-states-compare-legends.pdf", width = 6, height = 5, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig3/SuppFig6d-cell-states-compare-legends.pdf", width = 6, height = 5, useDingbats = FALSE, bg="transparent")
 grid.newpage()
 grid.draw(gleg)
 dev.off()

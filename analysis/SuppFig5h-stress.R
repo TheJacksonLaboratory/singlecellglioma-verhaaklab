@@ -5,7 +5,7 @@
 ###############################################
 
 ## Working directory for this analysis in the SCGP-analysis project. 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###############################################
@@ -37,11 +37,6 @@ transcriptional_subtype <- dbReadTable(con,  Id(schema="analysis", table="transc
 transcript_tpm <- dbReadTable(con,  Id(schema="analysis", table="transcript_tpm"))
 gene_tpm <- dbReadTable(con,  Id(schema="analysis", table="gene_tpm"))
 
-## Output expression table for upload to Synapse.
-##write.table(gene_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_gene_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
-##write.table(transcript_tpm, file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/synapse/analysis_RNA_transcript_expression.tsv",sep="\t", row.names = F, col.names = T, quote = F)
-
-
 ## Create a gene x sample matrix.
 gene_df = gene_tpm %>% 
   dplyr::select(-est_counts) %>% 
@@ -54,13 +49,13 @@ gene_df$gene_symbol <- NULL
 gene_mat <- as.matrix(gene_df)
 
 ## Load in the referent gene sets for stress, oxidative stress, hypoxia..
-stress_genes <- read.table(file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/ref/GO_REGULATION_OF_RESPONSE_TO_STRESS_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
+stress_genes <- read.table(file="data/GO_REGULATION_OF_RESPONSE_TO_STRESS_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
 stress_genes_list = list(stress_genes$V1)
-ox_stress_genes <- read.table(file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/ref/GO_RESPONSE_TO_OXIDATIVE_STRESS_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
+ox_stress_genes <- read.table(file="data/GO_RESPONSE_TO_OXIDATIVE_STRESS_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
 ox_stress_genes_list = list(ox_stress_genes$V1)
-harris_hypoxia_genes <- read.table(file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/ref/HARRIS_HYPOXIA_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
+harris_hypoxia_genes <- read.table(file="data/HARRIS_HYPOXIA_geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
 harris_hypoxia_list = list(harris_hypoxia_genes$V1)
-ELVIDGE_hypoxia_genes <- read.table(file="/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/ref/ELVIDGE_HYPOA_UP-geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
+ELVIDGE_hypoxia_genes <- read.table(file="data/ELVIDGE_HYPOA_UP-geneset.txt", sep="\t", header=F, skip=2, stringsAsFactors = F)
 ELVIDGE_hypoxia_list = list(ELVIDGE_hypoxia_genes$V1)
 
 ## Try the enrichment with a set of randomly selected genes.
@@ -83,12 +78,13 @@ cor.test(random_gsea, elvidge_gsea, method="spearman")
 cor.test(random_gsea, stress_gsea, method="spearman")
 
 #############################
-### General epimutation rate
+### Global DNAme disorder
 #############################
-epiallele_info <- read.table(file="/Users/johnsk/mnt/verhaak-lab/scgp/results/epimutation/rerun-reformatted_deduplicated-final_recalculated/Samples-passQC_single_cells_global_and_context-specific_pdr_score_table.txt", sep="\t", header=T, stringsAsFactors = F)
+## Load in the DNAme disorder table. 
+epiallele_info <- read.table(file="data/analysis_scRRBS_context_specific_DNAme_disorder.csv", sep = ",", header = TRUE)
 
 ## Additional information about single-cells passing QC.
-rrbs_qc <- read.table(file="/Users/johnsk/github/data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
+rrbs_qc <- read.table(file="data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
 
 ## Restrict to the samples that pass the general QC guidelines of CpG count, bisulfite conversion, and tumor status (inferred CNVs).
 rrbs_qc_pass <- rrbs_qc %>% 
@@ -96,13 +92,12 @@ rrbs_qc_pass <- rrbs_qc %>%
 
 ## Calculate the mean disorder for each tumor.
 disorder_mean <- epiallele_info %>% 
-  filter(sample_barcode%in%rrbs_qc_pass$cell_barcode) %>% 
-  mutate(case_barcode = gsub("-", "", substr(sample_barcode, 6, 11))) %>% 
+  filter(cell_barcode%in%rrbs_qc_pass$cell_barcode) %>% 
   group_by(case_barcode) %>% 
   summarise(disorder_mean = mean(PDR)) %>% 
   ungroup() %>% 
   select(case_barcode, disorder = disorder_mean) %>% 
-  filter(!case_barcode%in%c("SM015", "SM008", "UC917"))
+  filter(!case_barcode%in%c("SM015", "SM008", "SM019"))
 
 ## Sanity check that data are aligned.
 gsub("-", "", substr(colnames(stress_gsea), 6, 11))==disorder_mean$case_barcode
@@ -123,7 +118,7 @@ epimut_stress_long = epimut_stress %>%
                           "GO_RESPONSE_TO_OX_STRESS_ssGSEA" = "GO ox. stress response genes",
                           "RANDOM_ssGSEA" = "Random genes"))
 
-pdf("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5disorder-RNA-ssGSEAv2.pdf", height=4, width=7.5, useDingbats = FALSE, bg="transparent")
+pdf("results/Fig2/SuppFig5disorder-RNA-ssGSEA.pdf", height=4, width=7.5, useDingbats = FALSE, bg="transparent")
 ggplot(epimut_stress_long, aes(x=ssGSEA, y=disorder)) + 
   geom_point() +
   geom_smooth(method="lm", se = FALSE) +
@@ -133,7 +128,6 @@ ggplot(epimut_stress_long, aes(x=ssGSEA, y=disorder)) +
   theme(panel.spacing = unit(1.5, "lines")) +
   facet_grid(. ~ pathway, scales = "free_x", space = "free")
 dev.off()
-
 
 
 

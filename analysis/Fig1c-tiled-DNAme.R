@@ -27,11 +27,9 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
 
-
-## Summarized DNA methylation data across the 914 cells passing QC (wide version of `analysis_scRRBS_10kb_tiled_methylation.tsv.gz`).
+## Summarized DNA methylation data across the 914 cells passing QC (wide version of `analysis_scRRBS_10kb_tiled_methylation.tsv.gz` on Synapse).
 tiles_10kb <- read.table("Samples_annotation_hg19_tiling10kb_methylation-filtered_passedQC.txt", sep="\t", header=T, stringsAsFactors = F)
 colnames(tiles_10kb) <- gsub("\\.", "-",  colnames(tiles_10kb))
-## colnames(tiles_10kb) <- gsub("UC-917", "SM-019", colnames(tiles_10kb))
 
 ## Create a mean methylation value across the 10-kb tiled region.
 bin_counts_10kb <- colSums(!is.na(tiles_10kb[, 5:918]))

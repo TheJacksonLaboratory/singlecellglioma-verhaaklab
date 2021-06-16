@@ -4,8 +4,8 @@
 # Author: Kevin J.
 ###################################
 
-## Working directory for this analysis.
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+# Working directory for this analysis.
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###################################
@@ -32,15 +32,18 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
 ############################
 #### TFBS DNAme disorder ###
 ############################
-## Load in the 20X CpG median coverage within a cell line + repeat elements masked.
-hypoxia_tfbs <- read.table("/Users/johnsk/mnt/verhaak-lab/scgp/results/epimutation/hypoxia_experiment_RRBS-ge20x_coverage/hypoxia_experiment_RRBS-ge20x_coverage-TFBS-specific_weighted_mean_PDR-filtered_TFBS.txt", sep="\t", header=T, stringsAsFactors = F)
-rt_tfbs <- read.table("/Users/johnsk/mnt//verhaak-lab/scgp/results/epimutation/RT_experiment_RRBS-ge20x_coverage/RT_experiment_RRBS-ge20x_coverage-TFBS-specific_weighted_mean_PDR-filtered_TFBS.txt", sep="\t", header=T, stringsAsFactors = F)
-rt_tfbs$timepoint[rt_tfbs$timepoint==9] <- "9 days"
+## Additional information about single-cells passing QC.
+tfbs <- read.table(file="data/analysis_RRBS_individual_TFBS_motif_DNAme_disorder.csv", sep = ",", header = TRUE)
+hypoxia_tfbs <- tfbs %>% 
+  filter(treatment!="RT")
+rt_tfbs <- tfbs %>% 
+  filter(treatment=="RT")
+  
 
 ## Split into Unique CpGs per TF AND TFBS PDR.
 epimut_cpg_tf_hypoxia = hypoxia_tfbs %>% 
   filter(timepoint=="9 days") %>% 
-  dplyr::select(sample, cell_line, timepoint, treatment = o2_level, ends_with("_num_unique_CpGs")) %>% 
+  dplyr::select(sample, cell_line, timepoint, treatment, ends_with("_num_unique_CpGs")) %>% 
   pivot_longer(
     cols = ends_with("_num_unique_CpGs"),
     names_to = "tf",
@@ -48,7 +51,7 @@ epimut_cpg_tf_hypoxia = hypoxia_tfbs %>%
   mutate(tf = gsub("_num_unique_CpGs", "", tf))
 
 epimut_cpg_tf_rt = rt_tfbs %>% 
-  dplyr::select(sample, cell_line, timepoint, treatment = rt_treatment, ends_with("_num_unique_CpGs")) %>% 
+  dplyr::select(sample, cell_line, timepoint, treatment, ends_with("_num_unique_CpGs")) %>% 
   pivot_longer(
     cols = ends_with("_num_unique_CpGs"),
     names_to = "tf",
@@ -62,7 +65,7 @@ epimut_cpg_tf <- bind_rows(epimut_cpg_tf_hypoxia, epimut_cpg_tf_rt)
 # Do the same for PDR.
 epimut_pdr_tf_hypoxia = hypoxia_tfbs %>% 
   filter(timepoint=="9 days") %>% 
-  dplyr::select(sample, cell_line, timepoint, treatment = o2_level,  ends_with("_PDR")) %>% 
+  dplyr::select(sample, cell_line, timepoint, treatment,  ends_with("_PDR")) %>% 
   pivot_longer(
     cols = ends_with("_PDR"),
     names_to = "tf",
@@ -70,7 +73,7 @@ epimut_pdr_tf_hypoxia = hypoxia_tfbs %>%
   mutate(tf = gsub("_PDR", "", tf))
 
 epimut_pdr_tf_rt = rt_tfbs %>% 
-  dplyr::select(sample, cell_line, timepoint, treatment = rt_treatment,  ends_with("_PDR")) %>% 
+  dplyr::select(sample, cell_line, timepoint, treatment,  ends_with("_PDR")) %>% 
   pivot_longer(
     cols = ends_with("_PDR"),
     names_to = "tf",
@@ -155,16 +158,20 @@ tfbs_pvalues <- epimut_group_med_wilcox %>%
 #############################
 ##### TF activity      ######
 #############################
-## Load the SCENIC results for each sample:
+## Load the SCENIC results for each sample:.
+hf2354_umap <- read.table(file="data/analysis_scRNAseq_stress_hf2354_metadata.csv", sep = ",", header = TRUE)
+
 ## Load filtered, processed, unnormalized count matrix.
-hf2354_obj <- ReadH5AD("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20016-18-33/RV20016-18-33-qc_20210203.h5ad")
+hf2354_obj <- ReadH5AD("data/analysis_scRNAseq_stress_hf2354_expression.h5ad")
+
+## Make a Seurat object with the standard pipeline.
+## Feature counts for each cell are divided by the total counts for that cell and multiplied by the scale.factor. 
+## This is then natural-log transformed using log1p.
+hf2354_obj <- hf2354_obj %>% 
+  Seurat::NormalizeData() 
 
 ## Use the experimental conditions.
 hf2354_obj@meta.data$cell_name = rownames(hf2354_obj@meta.data)
-hf2354_obj@meta.data$library = sapply(strsplit(hf2354_obj@meta.data$cell_name, "-"), "[[", 3)
-hf2354_obj@meta.data$library[hf2354_obj@meta.data$library==0] <- "RV20016"
-hf2354_obj@meta.data$library[hf2354_obj@meta.data$library==1] <- "RV20018"
-hf2354_obj@meta.data$library[hf2354_obj@meta.data$library==2] <- "RV20033"
 
 ## Downsample for input into SCENIC.
 cells_to_sample <- 5000
@@ -174,107 +181,109 @@ cells_to_subset <- sample(x = hf2354_obj@meta.data$cell_name, size = cells_to_sa
 # Subset Seurat object.
 hf2354_obj_sub <- SubsetData(object = hf2354_obj, cells = cells_to_subset)
 
+## Restrict the metadata data to that which was included in the SCENIC run.
+hf2354_umap_filt <- hf2354_umap %>% 
+  filter(cell_barcode%in%hf2354_obj_sub@meta.data$cell_name)
 
-## Load the 10X data for all the stressed and control samples.
-## HF2354 ##
-load("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20016-18-33/RV20016-18-33_20210203.Rds")
-hf2354_featuredata <- featuredata
-hf2354_log2cpm <- log2cpm
+##########################
+### Begin SCENIC approach
+##########################
+## Building the **gene regulatory network (GRN)**: 
+## 1. Identify potential targets for each TF based on co-expression.
+# - Filtering the expression matrix and running GENIE3/GRNBoost. 
+# - Formatting the targets from GENIE3/GRNBoost into co-expression modules. 
 
-# Replace ENSEMBL gene names with Hugo gene names.
-rownames(hf2354_log2cpm) <- hf2354_featuredata$Associated.Gene.Name
-hf2354_tsne.data <- tsne.data
-hf2354_tsne.data$library <- sapply(strsplit(rownames(hf2354_tsne.data), "-"), "[[", 3)
-hf2354_tsne.data$cell_name <- rownames(hf2354_tsne.data)
-hf2354_tsne.data$cell_barcode <- substr(rownames(hf2354_tsne.data), 1, 18)
-hf2354_tsne.data$scbl_id[hf2354_tsne.data$library==0] <- "RV20016"
-hf2354_tsne.data$scbl_id[hf2354_tsne.data$library==1] <- "RV20018"
-hf2354_tsne.data$scbl_id[hf2354_tsne.data$library==2] <- "RV20033"
+## Running SCENIC on a subsample of the data for run time considerations.
+## Initialize SCENIC settings:
+org="hgnc" 
+dbDir="/projects/verhaak-lab/scgp/reference/cisTarget_databases" 
+myDatasetTitle="SCENIC HF2354" 
+data(defaultDbNames)
+dbs <- defaultDbNames[[org]]
+scenicOptions <- initializeScenic(org=org, dbDir=dbDir, dbs=dbs, datasetTitle=myDatasetTitle, nCores=10) 
 
-## 2D coordinates:
-hf2354_2d_umap = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20016-18-33/RV20016-18-33_umap_2d_embedding_20210203.csv", sep = ",", stringsAsFactors = F, header = T)
-hf2354_2d_umap$library <- sapply(strsplit(hf2354_2d_umap$barcode, "-"), "[[", 3)
-hf2354_2d_umap$scbl_id[hf2354_2d_umap$library==0] <- "RV20016"
-hf2354_2d_umap$scbl_id[hf2354_2d_umap$library==1] <- "RV20018"
-hf2354_2d_umap$scbl_id[hf2354_2d_umap$library==2] <- "RV20033"
-hf2354_2d_umap$cell_barcode <- substr(hf2354_2d_umap$barcode, 1, 18)
+# Save to use at a later time.
+saveRDS(scenicOptions, file="int/scenicOptions.Rds") 
 
-## Load in hashtag map:
-hashtag_map <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20017_HTO_demux/stress-hashtag-10X-map.txt", sep="\t", header=T, stringsAsFactors = F)
+## Load expression matrix.
+exprMat <- data.matrix(GetAssayData(hf2354_obj_sub))
+cellInfo <- data.frame(hf2354_obj_sub@meta.data$library)
+rownames(cellInfo) <- rownames(hf2354_obj_sub@meta.data)
+colnames(cellInfo) <- "CellType"
 
-## The HTO tags for 3 days.
-hf2354_3d_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20017_HTO_demux/RV20016/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf2354_3d_tags <- hf2354_3d_tags %>% 
-  mutate(cell_name = paste(X, "-0", sep=""),
-         scbl_id = "RV20016",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
-
-## The HTO tags for 9 days hypoxia-normoxia.
-hf2354_9d_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20019-hto_demux/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf2354_9d_tags <- hf2354_9d_tags %>% 
-  mutate(cell_name = paste(X, "-1", sep=""),
-         scbl_id = "RV20018",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
-
-## The HTO tags for 9 days irradiation.
-hf2354_9d_rt_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20034-hto_demux/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf2354_9d_rt_tags <- hf2354_9d_rt_tags %>% 
-  mutate(cell_name = paste(X, "-2", sep=""),
-         scbl_id = "RV20033",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  filter(hash.ID == "HHTO1") %>% 
-  select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
+# Color to assign to the variables (same format as for NMF::heatmap)
+colVars <- list(CellType=c("RV20018" = "#fcbba1",
+                           "RV20033" = "#00FF00"))
+colVars$CellType <- colVars$CellType[intersect(names(colVars$CellType), cellInfo$CellType)]
 
 
-hf2354_tags <- bind_rows(hf2354_3d_tags, hf2354_9d_tags, hf2354_9d_rt_tags)
-hf2354_tags_annot <- hf2354_tags %>% 
-  left_join(hashtag_map, by=c("hashtag", "scbl_id"))
-
-hf2354_tsne_annot <- hf2354_tsne.data %>% 
-  inner_join(hf2354_tags_annot, by=c("cell_barcode", "scbl_id")) %>% 
-  inner_join(hf2354_2d_umap, by=c("cell_barcode", "scbl_id")) %>% 
-  mutate(cell_type = recode(dbCluster, `1` = "Diff.-like",  `2` = "Diff.-like", `3` = "Prolif. stem-like",
-                            `4` = "Stem-like", `5` = "Stem-like", `6` = "Prolif. stem-like", `7` = "Prolif. stem-like",
-                            `8` = "Prolif. stem-like", `9` = "Stem-like"),
-         condition_revalue = recode(condition, `HF2354-7221` = "normoxia-3d",
-                                    `HF2354-7201` = "hypoxia-3d",
-                                    `HF2354-0921` = "normoxia-9d",
-                                    `HF2354-0901` = "hypoxia-9d",
-                                    `HF2354-09RT` = "Irradiation-9d")) 
-hf2354_tsne_annot_filt <- hf2354_tsne_annot[match(rownames(hf2354_obj_sub@meta.data), hf2354_tsne_annot$cell_name.x), ]
-all(rownames(hf2354_obj_sub@meta.data)==hf2354_tsne_annot_filt$cell_name.x)
+## Save outputs for cell annotation and color code. 
+saveRDS(cellInfo, file="int/cellInfo.Rds")
+saveRDS(colVars, file="int/colVars.Rds")
 
 
-## Clean up workspace:
-rm(log2cpm)
-rm(hf2354_log2cpm)
-rm(hf2354_obj)
+## Examine how many genes have greater than 0.
+cellInfo$nGene <- colSums(exprMat>0)
+head(cellInfo)
 
-################################
-### Re-load SCENIC results
-################################
-auc_rankings_hf2354 <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/SCENIC/HF2354/int/3.3_aucellRankings.Rds")
-regulonAUC_hf2354 <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/SCENIC/HF2354/int/3.4_regulonAUC.Rds")
+## Filter based on the number of genes.
+genesKept <- geneFiltering(exprMat, scenicOptions=scenicOptions,
+                           minCountsPerGene=3*.01*ncol(exprMat),
+                           minSamples=ncol(exprMat)*.01)
+
+
+## Filter the expression matrix only to keep these genes.
+## The data is already logged / normalized.
+exprMat_filtered <- exprMat[genesKept, ]
+dim(exprMat_filtered)
+
+
+## Split the targets into positive- and negative-correlated targets 
+## (i.e. Spearman correlation between the TF and the potential target).
+runCorrelation(exprMat_filtered, scenicOptions)
+
+### Run GENIE3 (this is computationally intensive). 
+runGenie3(exprMat_filtered, scenicOptions)
+
+## 2.  Select potential direct-binding targets (regulons) based on DNA-motif analysis (*RcisTarget*: TF motif analysis) 
+## Build and score the GRN.
+scenicOptions@settings$verbose <- TRUE
+scenicOptions@settings$nCores <- 10
+scenicOptions@settings$seed <- 123
+
+## 1. Get co-expression modules.
+runSCENIC_1_coexNetwork2modules(scenicOptions)
+
+## 2. Get regulons (with RcisTarget): TF motif analysis).
+runSCENIC_2_createRegulons(scenicOptions)
+
+## 3. Score GRN (regulons) in the cells (with AUCell).
+runSCENIC_3_scoreCells(scenicOptions, exprMat_filtered)
+
+## 4. Determine the binarized activities.
+runSCENIC_4_aucell_binarize(scenicOptions, skipBoxplot = FALSE, skipHeatmaps = FALSE,
+                            skipTsne = FALSE, exprMat = exprMat_filtered)
+
+##### The outputs from the SCENIC runs.
+## HF2354 single cells exposed to different stressprs.
+auc_rankings_hf2354 <- readRDS("data/SCENIC/HF2354/3.3_aucellRankings.Rds")
+regulonAUC_hf2354 <- readRDS("data/SCENIC/HF2354/3.4_regulonAUC.Rds")
 
 ## Create a data.frame with the gene sets/TFs and cells.
 regulonAUC_hf2354_df = as.data.frame(getAUC(regulonAUC_hf2354))
-## The annotation files we have match the regulonAUC data.
-all(hf2354_tsne_annot_filt$cell_name.x==colnames(regulonAUC_hf2354_df))
+
 
 ## generate z-scores for variable A using the scale() function
 ## scale(A, center = TRUE, scale = TRUE). These are the defaults. 
 regulonAUC_hf2354_scaled = t(apply(as.matrix(regulonAUC_hf2354_df), 1, scale))
 
 
-
 ## Extract the TFs of interest.
 regulonAUC_hf2354_scaled_filt <- as.data.frame(t(regulonAUC_hf2354_scaled[grep("RELA|TFDP1|ELK4|KLF16", rownames(regulonAUC_hf2354_scaled)), ]))
 regulonAUC_hf2354_scaled_filt$cell_name <- colnames(regulonAUC_hf2354_df)
 
-regulon_filt_9d_annot_hf2354 <- hf2354_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+regulon_filt_9d_annot_hf2354 <- hf2354_umap_filt %>% 
+  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`TFDP1 (3124g)`, `RELA (406g)`, `ELK4_extended (913g)`, `KLF16_extended (242g)`), 
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -305,10 +314,13 @@ ggplot(regulon_filt_9d_annot_hf2354, aes(x=condition_revalue, y=activity, fill=c
 ###################################
 ##### HF3016 TF activity      #####
 ###################################
-## Load filtered, processed, unnormalized count matrix.
-hf3016_obj <- ReadH5AD("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20020-22-33/RV20020-22-33-qc_20210203.h5ad")
+## Load the SCENIC results for each sample:.
+hf3016_umap <- read.table(file="data/analysis_scRNAseq_stress_hf3016_metadata.csv", sep = ",", header = TRUE)
 
-## Make a Seurat object with the standard pipeline.
+## Load filtered, processed, unnormalized count matrix.
+hf3016_obj <- ReadH5AD("data/analysis_scRNAseq_stress_hf3016_expression.h5ad")
+
+# Make a Seurat object with the standard pipeline.
 ## Feature counts for each cell are divided by the total counts for that cell and multiplied by the scale.factor. 
 ## This is then natural-log transformed using log1p.
 hf3016_obj <- hf3016_obj %>% 
@@ -316,10 +328,6 @@ hf3016_obj <- hf3016_obj %>%
 
 ## Use the experimental conditions.
 hf3016_obj@meta.data$cell_name = rownames(hf3016_obj@meta.data)
-hf3016_obj@meta.data$library = sapply(strsplit(hf3016_obj@meta.data$cell_name, "-"), "[[", 3)
-hf3016_obj@meta.data$library[hf3016_obj@meta.data$library==0] <- "RV20020"
-hf3016_obj@meta.data$library[hf3016_obj@meta.data$library==1] <- "RV20022"
-hf3016_obj@meta.data$library[hf3016_obj@meta.data$library==2] <- "RV20033"
 
 ## Downsample for input into SCENIC.
 cells_to_sample <- 5000
@@ -329,109 +337,98 @@ cells_to_subset <- sample(x = hf3016_obj@meta.data$cell_name, size = cells_to_sa
 # Subset Seurat object.
 hf3016_obj_sub <- SubsetData(object = hf3016_obj, cells = cells_to_subset)
 
+## Restrict the metadata data to that which was included in the SCENIC run.
+hf3016_umap_filt <- hf3016_umap %>% 
+  filter(cell_barcode%in%hf3016_obj_sub@meta.data$cell_name)
 
-## Load the 10X data for all the stressed and control samples.
-## HF3016 ##
-load("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20020-22-33/RV20020-22-33_20210203.Rds")
-hf3016_featuredata <- featuredata
-hf3016_log2cpm <- log2cpm
+##########################
+### Begin SCENIC approach
+##########################
+## Building the **gene regulatory network (GRN)**: 
+## 1. Identify potential targets for each TF based on co-expression.
+# - Filtering the expression matrix and running GENIE3/GRNBoost. 
+# - Formatting the targets from GENIE3/GRNBoost into co-expression modules. 
 
-# Replace ENSEMBL gene names with Hugo gene names.
-rownames(hf3016_log2cpm) <- hf3016_featuredata$Associated.Gene.Name
-hf3016_tsne.data <- tsne.data
-hf3016_tsne.data$library <- sapply(strsplit(rownames(hf3016_tsne.data), "-"), "[[", 3)
-hf3016_tsne.data$cell_name <- rownames(hf3016_tsne.data)
-hf3016_tsne.data$cell_barcode <- substr(rownames(hf3016_tsne.data), 1, 18)
-hf3016_tsne.data$scbl_id[hf3016_tsne.data$library==0] <- "RV20020"
-hf3016_tsne.data$scbl_id[hf3016_tsne.data$library==1] <- "RV20022"
-hf3016_tsne.data$scbl_id[hf3016_tsne.data$library==2] <- "RV20033"
+## Initialize SCENIC settings:
+org="hgnc" 
+dbDir="/projects/verhaak-lab/scgp/reference/cisTarget_databases" 
+myDatasetTitle="SCENIC HF3016" 
+data(defaultDbNames)
+dbs <- defaultDbNames[[org]]
+scenicOptions <- initializeScenic(org=org, dbDir=dbDir, dbs=dbs, datasetTitle=myDatasetTitle, nCores=10) 
 
+# Save to use at a later time.
+saveRDS(scenicOptions, file="int/scenicOptions.Rds") 
 
-## 2D coordinates:
-hf3016_2d_umap = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20020-22-33/RV20020-22-33_umap_2d_embedding_20210203.csv", sep = ",", stringsAsFactors = F, header = T)
-hf3016_2d_umap$library <- sapply(strsplit(hf3016_2d_umap$barcode, "-"), "[[", 3)
-hf3016_2d_umap$scbl_id[hf3016_2d_umap$library==0] <- "RV20020"
-hf3016_2d_umap$scbl_id[hf3016_2d_umap$library==1] <- "RV20022"
-hf3016_2d_umap$scbl_id[hf3016_2d_umap$library==2] <- "RV20033"
-hf3016_2d_umap$cell_barcode <- substr(hf3016_2d_umap$barcode, 1, 18)
+## Load expression matrix.
+exprMat <- data.matrix(GetAssayData(hf3016_obj_sub))
+cellInfo <- data.frame(hf3016_obj_sub@meta.data$library)
+rownames(cellInfo) <- rownames(hf3016_obj_sub@meta.data)
+colnames(cellInfo) <- "CellType"
 
-## Load in hashtag map:
-hashtag_map <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20017_HTO_demux/stress-hashtag-10X-map.txt", sep="\t", header=T, stringsAsFactors = F)
-
-## The HTO tags for 3 days.
-hf3016_3d_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20017_HTO_demux/RV20020/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf3016_3d_tags <- hf3016_3d_tags %>% 
-  mutate(cell_name = paste(X, "-0", sep=""),
-         scbl_id = "RV20020",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  dplyr::select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
-
-## The HTO tags for 9 days hypoxia-normoxia.
-hf3016_9d_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20017_HTO_demux/RV20022/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf3016_9d_tags <- hf3016_9d_tags %>% 
-  mutate(cell_name = paste(X, "-1", sep=""),
-         scbl_id = "RV20022",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  dplyr::select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
-
-## The HTO tags for 9 days irradiation.
-hf3016_9d_rt_tags = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20034-hto_demux/hto_exome_2tags_matrix_hashid.csv", sep = ",", stringsAsFactors = F, header = T)
-hf3016_9d_rt_tags <- hf3016_9d_rt_tags %>% 
-  mutate(cell_name = paste(X, "-2", sep=""),
-         scbl_id = "RV20033",
-         cell_barcode = substr(cell_name, 1, 18)) %>% 
-  filter(hash.ID == "HHTO2") %>% 
-  dplyr::select(cell_name, cell_barcode, hashtag = hash.ID, scbl_id)
+# Color to assign to the variables (same format as for NMF::heatmap)
+colVars <- list(CellType=c("RV20020" = "#fb6a4a", 
+                           "RV20022" = "#fcbba1",
+                           "RV20033" = "#00FF00"))
+colVars$CellType <- colVars$CellType[intersect(names(colVars$CellType), cellInfo$CellType)]
 
 
-hf3016_tags <- bind_rows(hf3016_3d_tags, hf3016_9d_tags, hf3016_9d_rt_tags)
-hf3016_tags_annot <- hf3016_tags %>% 
-  left_join(hashtag_map, by=c("hashtag", "scbl_id"))
+## Save outputs for cell annotation and color code. 
+saveRDS(cellInfo, file="int/cellInfo.Rds")
+saveRDS(colVars, file="int/colVars.Rds")
 
 
-## Loupe-defined clusters:
-hf3016_graph_based_clusters = read.csv("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/RV20020-22-33/hf3016-graph-based-clustering.csv", sep = ",", stringsAsFactors = F, header = T)
-hf3016_graph_based_clusters = hf3016_graph_based_clusters %>%
-  mutate(library = sapply(strsplit(Barcode, "-"), "[[", 2),
-         lib_adjust = recode(library, `1` = "0",  `2` = "1", `3` = "2"),
-         barcode_merge = paste(substr(Barcode, 1, 16), "1", lib_adjust, sep="-"))
+## Examine how many genes have greater than 0.
+cellInfo$nGene <- colSums(exprMat>0)
+head(cellInfo)
 
-hf3016_tsne_annot <- hf3016_tsne.data %>% 
-  inner_join(hf3016_tags_annot, by=c("cell_barcode", "scbl_id")) %>% 
-  inner_join(hf3016_2d_umap, by=c("cell_barcode", "scbl_id")) %>% 
-  inner_join(hf3016_graph_based_clusters, by=c("barcode"="barcode_merge")) %>% 
-  mutate(cell_type_db = recode(dbCluster, `1` = "Prolif. stem-like",  `2` = "Diff.-like", `3` = "Prolif. stem-like",
-                               `4` = "Prolif. stem-like", `5` = "Stem-like", `6` = "Diff.-like", `7` = "Diff.-like",
-                               `8` = "Diff.-like", `9` = "Diff.-like"),
-         cell_type = recode(Graph.based, `Cluster 1` = "Diff.-like",  `Cluster 2` = "Diff.-like", `Cluster 3` = "Diff.-like",
-                            `Cluster 4` = "Stem-like", `Cluster 5` = "Diff.-like", `Cluster 6` = "Diff.-like", `Cluster 7` = "Prolif. stem-like",
-                            `Cluster 8` = "Diff.-like", `Cluster 9` = "Prolif. stem-like", `Cluster 10` = "Prolif. stem-like", `Cluster 11` = "Diff.-like",
-                            `Cluster 12` = "Prolif. stem-like", `Cluster 13` = "Stem-like", `Cluster 14` = "Prolif. stem-like"),
-         condition_revalue = recode(condition, `HF3016-7221` = "normoxia-3d",
-                                    `HF3016-7201` = "hypoxia-3d",
-                                    `HF3016-0921` = "normoxia-9d",
-                                    `HF3016-0901` = "hypoxia-9d",
-                                    `HF3016-09RT` = "Irradiation-9d"))
+## Filter based on the number of genes.
+genesKept <- geneFiltering(exprMat, scenicOptions=scenicOptions,
+                           minCountsPerGene=3*.01*ncol(exprMat),
+                           minSamples=ncol(exprMat)*.01)
 
 
-hf3016_tsne_annot_filt <- hf3016_tsne_annot[match(rownames(hf3016_obj_sub@meta.data), hf3016_tsne_annot$cell_name.x), ]
-all(rownames(hf3016_obj_sub@meta.data)==hf3016_tsne_annot_filt$cell_name.x)
+## Filter the expression matrix only to keep these genes.
+## The data is already logged / normalized.
+exprMat_filtered <- exprMat[genesKept, ]
+dim(exprMat_filtered)
 
-## Clean up workspace:
-rm(log2cpm)
-rm(hf3016_log2cpm)
-rm(hf3016_obj)
+
+## Split the targets into positive- and negative-correlated targets 
+## (i.e. Spearman correlation between the TF and the potential target).
+runCorrelation(exprMat_filtered, scenicOptions)
+
+### Run GENIE3 (this is computationally intensive). 
+runGenie3(exprMat_filtered, scenicOptions)
+
+## 2.  Select potential direct-binding targets (regulons) based on DNA-motif analysis (*RcisTarget*: TF motif analysis) 
+## Build and score the GRN.
+scenicOptions@settings$verbose <- TRUE
+scenicOptions@settings$nCores <- 10
+scenicOptions@settings$seed <- 123
+
+## 1. Get co-expression modules.
+runSCENIC_1_coexNetwork2modules(scenicOptions)
+
+## 2. Get regulons (with RcisTarget): TF motif analysis).
+runSCENIC_2_createRegulons(scenicOptions)
+
+## 3. Score GRN (regulons) in the cells (with AUCell).
+runSCENIC_3_scoreCells(scenicOptions, exprMat_filtered)
+
+## 4. Determine the binarized activities.
+runSCENIC_4_aucell_binarize(scenicOptions, skipBoxplot = FALSE, skipHeatmaps = FALSE,
+                            skipTsne = FALSE, exprMat = exprMat_filtered)
+
 
 #########################
 ### Load SCENIC results
 #########################
-auc_rankings_hf3016 <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/SCENIC/HF3016/int/3.3_aucellRankings.Rds")
-regulonAUC_hf3016 <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/SCENIC/HF3016/int/3.4_regulonAUC.Rds")
+auc_rankings_hf3016 <- readRDS("data/SCENIC/HF3016/3.3_aucellRankings.Rds")
+regulonAUC_hf3016 <- readRDS("data/SCENIC/HF3016/3.4_regulonAUC.Rds")
 
 ## Create a data.frame with the gene sets/TFs and cells.
 regulonAUC_hf3016_df = as.data.frame(getAUC(regulonAUC_hf3016))
-## The annotation files we have match the regulonAUC_hf3016 data.
-all(hf3016_tsne_annot_filt$cell_name.x==colnames(regulonAUC_hf3016_df))
 
 ## generate z-scores for variable A using the scale() function
 ## scale(A, center = TRUE, scale = TRUE). These are the defaults. 
@@ -441,8 +438,8 @@ regulonAUC_hf3016_scaled = t(apply(as.matrix(regulonAUC_hf3016_df), 1, scale))
 regulonAUC_hf3016_scaled_filt <- as.data.frame(t(regulonAUC_hf3016_scaled[grep("RELA|TFDP1|ELK4|KLF16", rownames(regulonAUC_hf3016_scaled)), ]))
 regulonAUC_hf3016_scaled_filt$cell_name <- colnames(regulonAUC_hf3016_df)
 
-regulon_filt_9d_annot_hf3016 <- hf3016_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+regulon_filt_9d_annot_hf3016 <- hf3016_umap_filt %>% 
+  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`TFDP1 (2910g)`, `RELA (650g)`, `ELK4_extended (1222g)`, `KLF16_extended (40g)`), 
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -486,8 +483,8 @@ rownames(regulonAUC_hf3016_scaled[grep("ELK4|FOSL2|KLF10|KLF16|MEF2D|NFYB|NR2C1|
 regulonAUC_hf2354_scaled_filt <- as.data.frame(t(regulonAUC_hf2354_scaled[grep("ELK4|FOSL2|KLF10|KLF16|MEF2D|NFYB|NR2C1|REL_|RELA|RFX3|TFDP1|VEZF1|ZNF263|ZNF384", rownames(regulonAUC_hf2354_scaled)), ]))
 regulonAUC_hf2354_scaled_filt$cell_name <- colnames(regulonAUC_hf2354_df)
 
-tf_activity_wilcox_hypoxia_hf2354 <- hf2354_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_wilcox_hypoxia_hf2354 <- hf2354_umap_filt %>% 
+  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`NFYB_extended (1712g)`:`ELK4_extended (913g)`),             
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -497,8 +494,8 @@ tf_activity_wilcox_hypoxia_hf2354 <- hf2354_tsne_annot_filt %>%
   summarise(tf, cell_line, Wilcox = w$p.value) %>% 
   dplyr::select(cell_line, tf, hypoxia_wilcox = Wilcox) 
 
-tf_activity_wilcox_rt_hf2354 <- hf2354_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_wilcox_rt_hf2354 <- hf2354_umap_filt %>% 
+  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`NFYB_extended (1712g)`:`ELK4_extended (913g)`),             
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -508,8 +505,8 @@ tf_activity_wilcox_rt_hf2354 <- hf2354_tsne_annot_filt %>%
   summarise(tf, cell_line, Wilcox = w$p.value) %>% 
   dplyr::select(cell_line, tf, rt_wilcox = Wilcox) 
 
-tf_activity_median_wilcox_hf2354 <- hf2354_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_median_wilcox_hf2354 <- hf2354_umap_filt %>% 
+  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`NFYB_extended (1712g)`:`ELK4_extended (913g)`),             
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -528,8 +525,8 @@ tf_activity_median_wilcox_hf2354 <- hf2354_tsne_annot_filt %>%
          tf = sapply(strsplit(tf, " "), "[[", 1)) %>% 
   distinct()
 
-tf_activity_median_wilcox_hf2354 <- hf2354_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_median_wilcox_hf2354 <- hf2354_umap_filt %>% 
+  inner_join(regulonAUC_hf2354_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`NFYB (1192g)`,`TFDP1 (3124g)`, `FOSL2 (62g)`, `KLF16_extended (242g)`,
                  `ZNF384 (116g)`, `REL_extended (56g)`,  `RELA (406g)`,
                  `RFX3 (16g)`, `VEZF1_extended (38g)`, `ELK4_extended (913g)`),             
@@ -556,8 +553,8 @@ regulonAUC_hf3016_scaled_filt <- as.data.frame(t(regulonAUC_hf3016_scaled[grep("
 regulonAUC_hf3016_scaled_filt$cell_name <- colnames(regulonAUC_hf3016_df)
 
 
-tf_activity_wilcox_hypoxia_hf3016 <- hf3016_tsne_annot_filt %>% 
-    inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_wilcox_hypoxia_hf3016 <- hf3016_umap_filt %>% 
+    inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
     pivot_longer(c(`FOSL2_extended (649g)`:`RELA (650g)`),             
                  names_to = "tf", 
                  values_to =  "activity") %>% 
@@ -567,8 +564,8 @@ tf_activity_wilcox_hypoxia_hf3016 <- hf3016_tsne_annot_filt %>%
   summarise(tf, cell_line, Wilcox = w$p.value) %>% 
   dplyr::select(cell_line, tf, hypoxia_wilcox = Wilcox) 
 
-tf_activity_wilcox_rt_hf3016 <- hf3016_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_wilcox_rt_hf3016 <- hf3016_umap_filt %>% 
+  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`FOSL2_extended (649g)`:`RELA (650g)`),             
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -578,8 +575,8 @@ tf_activity_wilcox_rt_hf3016 <- hf3016_tsne_annot_filt %>%
   summarise(tf, cell_line, Wilcox = w$p.value) %>% 
   dplyr::select(cell_line, tf, rt_wilcox = Wilcox) 
 
-tf_activity_median_wilcox_hf3016 <- hf3016_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_median_wilcox_hf3016 <- hf3016_umap_filt %>% 
+  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`FOSL2_extended (649g)`:`RELA (650g)`),             
                names_to = "tf", 
                values_to =  "activity") %>% 
@@ -598,8 +595,8 @@ tf_activity_median_wilcox_hf3016 <- hf3016_tsne_annot_filt %>%
          tf = sapply(strsplit(tf, " "), "[[", 1)) %>% 
   distinct()
 
-tf_activity_median_wilcox_hf3016 <- hf3016_tsne_annot_filt %>% 
-  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_name.x" ="cell_name")) %>% 
+tf_activity_median_wilcox_hf3016 <- hf3016_umap_filt %>% 
+  inner_join(regulonAUC_hf3016_scaled_filt, by=c("cell_barcode" ="cell_name")) %>% 
   pivot_longer(c(`FOSL2 (490g)`,`TFDP1 (2910g)`, `KLF16_extended (40g)`, `RFX3_extended (16g)`,
                  `ELK4_extended (1222g)`, `NFYB (13g)`, `MEF2D (11g)`, `ZNF263_extended (166g)`,
                  `RELA (650g)`),             
@@ -646,7 +643,7 @@ comb_tf_all <- comb_tf_pvalue %>%
 
 comb_tf_all$activity <- factor(x = comb_tf_all$activity, levels = c("upregulation","downregulation"))
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig4/SuppFig8d-tf-activity.pdf", height = 6, width = 4, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig4/SuppFig8d-tf-activity.pdf", height = 6, width = 4, bg = "transparent", useDingbats = FALSE)
 ggplot() +
   geom_tile(data = comb_tf_all, aes(x = stress, y = tf, fill = activity, alpha = -log10(pvalue)), color = "black") +
   labs(y = "", fill = "9-day TF activity \nchange from normoxia") +
@@ -658,7 +655,7 @@ ggplot() +
   ggtitle("Selected TFs with significant TFBS motif\nDNAme disorder changes")
 dev.off()
 
-####################################################################3
+####################################################################
 
 regulon_filt_9d_annot_hf3016_sub <- regulon_filt_9d_annot_hf3016 %>% 
   dplyr::select(cell_line, stress = condition_revalue, tf, value = activity) %>% 
@@ -681,7 +678,7 @@ tfbs_disorder <- epimut_comb_tf_filt %>%
 tfbs_disorder$stress <- factor(x = tfbs_disorder$stress, levels = c("Normoxia", "Hypoxia", "Irradiation"))
 my_comparisons <- list( c("Normoxia", "Irradiation"), c("Normoxia", "Hypoxia"))
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig4/SuppFig8e-f-tf-disorder.pdf", height = 3, width = 6, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig4/SuppFig8e-f-tf-disorder.pdf", height = 3, width = 6, bg = "transparent", useDingbats = FALSE)
 ggplot(tfbs_disorder, aes(x=tf, y=value, fill= stress)) +
   geom_violin() +
   geom_boxplot(width=0.9, color="black", alpha=0.1, outlier.shape = NA) +
@@ -698,7 +695,7 @@ dev.off()
 ggplot(tfbs_disorder, aes(x=stress, y=value, fill= stress)) +
   geom_violin() +
   geom_boxplot(width=0.9, color="black", alpha=0.1, outlier.shape = NA) +
-  labs(y = "Relative TFBS motif\nDNAm4 disorder", x = "", fill = "9-day\nstress exposure") +
+  labs(y = "Relative TFBS motif\nDNAme disorder", x = "", fill = "9-day\nstress exposure") +
   scale_fill_manual(values=c("Normoxia" = "#abd9e9",
                              "Hypoxia" = "#d7191c",
                              "Irradiation" = "#0dba86")) +
@@ -712,7 +709,7 @@ tf_activity <- regulon_filt_9d_annot_hf2354_sub %>%
   bind_rows(regulon_filt_9d_annot_hf3016_sub) %>% 
   filter(tf%in%c("ELK4", "TFDP1"))
 
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig4/SuppFig8e-tf-activity.pdf", height = 3, width = 6, bg = "transparent", useDingbats = FALSE)
+pdf(file = "results/Fig4/SuppFig8e-tf-activity.pdf", height = 3, width = 6, bg = "transparent", useDingbats = FALSE)
 ggplot(tf_activity, aes(x=tf, y=value, fill=stress)) +
   geom_violin() +
   geom_boxplot(width=0.9, color="black", alpha=0.1, outlier.shape = NA) +

@@ -5,7 +5,7 @@
 ###################################
 
 # Working directory for this analysis in the SCGP project. 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###################################
@@ -16,7 +16,6 @@ library(RColorBrewer)
 library(ggpubr)
 library(viridis)
 ###################################
-
 ## Generate plot theme.
 plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size = 12),
                                                   axis.text = element_text(size = 12),
@@ -35,24 +34,26 @@ null_y        <- theme(axis.title.y=element_blank(),
 null_x        <- theme(axis.title.x=element_blank(),
                        axis.text.x=element_blank())
 
-## Load the SCGP subject-level metadata.
-full_meta_data = readWorkbook("/Users/johnsk/mnt/verhaak-lab/scgp/data/clinical/scgp-subject-metadata.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
 
-## Need to extract subtype and IDHmut status.
-meta_data = full_meta_data %>% 
-  select(case_barcode = subject_id, subtype) %>% 
-  mutate(idh_status = ifelse(subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
-  mutate(case_barcode_short = gsub("-", "", substr(case_barcode, 6, 11)))
+### Load the subject-level metadata.
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
+meta_data <- meta_data %>% 
+  mutate(IDH_status = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut"))
+
+## Additional information about single-cells passing QC.
+rrbs_qc <- read.table(file="data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
+
+
+## Load in the DNAme disorder table. 
+epiallele_info <- read.table(file="data/analysis_scRRBS_context_specific_DNAme_disorder.csv", sep = ",", header = TRUE)
+epiallele_tumor = epiallele_info %>% 
+  inner_join(rrbs_qc, by=c("cell_barcode", "case_barcode")) %>% 
+  filter(tumor_status == 1) %>% 
+  left_join(meta_data, by="case_barcode")
 
 
 ## Load in the processed promoter methylation data for each sample.
-prom2kb <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Samples-final_FANTOM5_gene_matched_promoter_methylation.txt", sep="\t", header=T, stringsAsFactors = F)
-
-## Load in the data with the total number of epialleles as well as context specific PDR.
-epiallele_info <- read.table(file="/Users/johnsk/mnt/verhaak-lab/scgp/results/epimutation/rerun-reformatted_deduplicated-final_recalculated/Samples-passQC_single_cells_global_and_context-specific_pdr_score_table.txt", sep="\t", header=T, stringsAsFactors = F)
-epiallele_tumor = epiallele_info %>% 
-  filter(tumor_cnv == 1) %>% 
-  left_join(meta_data, by=c("sample"="case_barcode"))
+prom2kb <- read.table("data/Samples-final_FANTOM5_gene_matched_promoter_methylation.txt", sep="\t", header=T, stringsAsFactors = F)
 
 
 ## Remove the annotated regions (chromosome, start, end, strand, gene).
@@ -63,8 +64,9 @@ colnames(prom2kb_mat) <- gsub(".deduplicated", "",  colnames(prom2kb_mat))
 colnames(prom2kb_mat) <- gsub("_pe", "",  colnames(prom2kb_mat))
 colnames(prom2kb_mat) <- gsub("\\.", "-",  colnames(prom2kb_mat))
 
+
 ## Restrict only to those samples that passed qc.
-prom2kb_mat_sc <- prom2kb_mat[ , colnames(prom2kb_mat) %in%epiallele_tumor$sample_barcode]
+prom2kb_mat_sc <- prom2kb_mat[ , colnames(prom2kb_mat) %in%epiallele_tumor$cell_barcode]
 
 ## Restrict to promoters that are measured in at least 10% of samples.
 missingness <- rowSums(is.na(prom2kb_mat_sc)/dim(prom2kb_mat_sc)[2])
@@ -75,24 +77,21 @@ prom_keep = which(missingness < 0.9) # regions with at least 10% of the samples 
 prom2kb_clust = prom2kb_mat_sc[prom_keep, ]
 
 ## Do the rows match?
-all(colnames(prom2kb_clust)==epiallele_tumor$sample_barcode)
+all(colnames(prom2kb_clust)==epiallele_tumor$cell_barcode)
 
-# Function for plotting densities by group.
-source("/Users/johnsk/Documents/Single-Cell-DNAmethylation/scripts/quality-metrics/densityRRBS.R")
-densityRRBS(prom2kb_clust, main="promoter methylation")
 
 ## Calculate the median, average promoter methylation for each cell.
 epiallele_tumor$avg_prom_meth <- colMeans(prom2kb_clust, na.rm=TRUE)
 
-####### Promoter epimutation ##########
-## Promoter epimutation rates.
-prom_epimut <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Samples-passQC_single_cells_individual_promoter-specific_PDR-filtered.txt", sep="\t", row.names=1, header=T, stringsAsFactors = F)
+####### Promoter DNAme disorder ##########
+## Promoter DNAme disorder /epimutation rates.
+prom_epimut <- read.table("data/Samples-passQC_single_cells_individual_promoter-specific_PDR-filtered.txt", sep="\t", row.names=1, header=T, stringsAsFactors = F)
 
 ## Revise the sample names to match between the promoter methylation data.
 colnames(prom_epimut) <- gsub("\\.", "-",  colnames(prom_epimut))
 
 ## Restrict to only tumor cells.
-prom_epimut_tumor = prom_epimut[, colnames(prom_epimut)%in%epiallele_tumor$sample_barcode]
+prom_epimut_tumor = prom_epimut[, colnames(prom_epimut)%in%epiallele_tumor$cell_barcode]
 
 ## Determine the missingness by colSums.
 missingness <- rowSums(is.na(prom_epimut_tumor)/dim(prom_epimut_tumor)[2])
@@ -113,14 +112,14 @@ hist(as.numeric(prom_epimut_tumor_filt["PANK4",]))
 prom2kb_clust = as.data.frame(prom2kb_clust)
 prom2kb_clust$gene = rownames(prom2kb_clust)
 gg_prom_meth = prom2kb_clust %>% 
-  gather(sample, methylation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-UC-917-01D-S5M-95S5`) %>% 
+  gather(sample, methylation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-SM-019-01D-S5M-95S5`) %>% 
   select(sample, gene, methylation)
 
 ## Build a data.frame with promoter-level epimutation:
 prom_epimut_tumor_filt = as.data.frame(prom_epimut_tumor_filt)
 prom_epimut_tumor_filt$gene = rownames(prom_epimut_tumor_filt)
 gg_prom_epimut = prom_epimut_tumor_filt %>% 
-  gather(sample, epimutation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-UC-917-01D-S5M-95S5`) %>% 
+  gather(sample, epimutation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-SM-019-01D-S5M-95S5`) %>% 
   select(sample, gene, epimutation)
 
 ## Sanity check number 2:
@@ -128,7 +127,7 @@ gg_prom_meth %>% filter(gene=="PANK4")
 gg_prom_epimut  %>% filter(gene=="PANK4")
 
 ## Combine these two regulatory matrices.
-IDHsamples <- c("SM001", "SM002", "SM004", "SM008", "SM015", "UC917")
+IDHsamples <- c("SM001", "SM002", "SM004", "SM008", "SM015", "SM019")
 gg_prom_reg = gg_prom_meth %>% 
   inner_join(gg_prom_epimut, by=c("sample", "gene")) %>% 
   filter(!is.na(epimutation)) %>% 
@@ -141,7 +140,7 @@ gg_prom_reg_sum <- gg_prom_reg %>%
             meth_avg = mean(methylation, na.rm=TRUE))
 
 ## Generate a promoter plot for epimutation vs. DNA methylation by subtype.
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5b-promoter-disorder-DNAme.pdf", height = 4, width = 6, useDingbats=FALSE)
+pdf(file = "results/Fig2/SuppFig5b-promoter-disorder-DNAme.pdf", height = 4, width = 6, useDingbats=FALSE)
 ggplot(gg_prom_reg_sum, aes(x=epim_avg, y=meth_avg) ) + 
   geom_point(alpha=0.5, size=0.75, aes(colour = meth_avg)) +
   scale_colour_viridis() +
@@ -152,7 +151,7 @@ ggplot(gg_prom_reg_sum, aes(x=epim_avg, y=meth_avg) ) +
   labs(x="Mean promoter-level DNAme disorder", y="Mean promoter-level DNAme", color = "DNAme\nlevel")
 dev.off()
 
-png(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5b-promoter-disorder-DNAme.png", height = 4, width = 6)
+png(file = "results/Fig2/SuppFig5b-promoter-disorder-DNAme.png", height = 4, width = 6)
 p1 = ggplot(gg_prom_reg_sum, aes(x=epim_avg, y=meth_avg) ) + 
   geom_point(alpha=0.5, size=0.75, aes(colour = meth_avg)) +
   scale_colour_viridis() +
@@ -164,13 +163,13 @@ p1 = ggplot(gg_prom_reg_sum, aes(x=epim_avg, y=meth_avg) ) +
   labs(x="", y="", color = "DNAme\nlevel") 
 dev.off()
 
-ggsave("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5b-promoter-disorder-DNAme.png",
+ggsave("results/Fig2/SuppFig5b-promoter-disorder-DNAme.png",
        p1,
        width = 6,
        height = 4,
        dpi=300)
 
-## How many distinct promoter regions?
+## How many distinct promoter regions? 5,557
 n_distinct(gg_prom_reg_sum$gene)
 
 ## What's the exact p-value?
@@ -185,7 +184,7 @@ cor.test(gg_prom_reg_sub_wt$meth_avg, gg_prom_reg_sub_wt$epim_avg, method="s")$p
 ### Gene-body DNA methylation - epimutation analyses
 #####################################################
 ## Load in the processed gene body methylation data for each sample.
-genebody_meth <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Samples-final_Ensembl_gene_body_methylation.txt", sep="\t", header=T, stringsAsFactors = F)
+genebody_meth <- read.table("data/Samples-final_Ensembl_gene_body_methylation.txt", sep="\t", header=T, stringsAsFactors = F)
 
 # Remove the annotated regions (chromosome, start, end, strand, gene) for clustering.
 gene_body_mat = genebody_meth[ , 6:1127]
@@ -195,7 +194,7 @@ rownames(gene_body_mat) <- genebody_meth$Name
 colnames(gene_body_mat) <- gsub(".deduplicated", "",  colnames(gene_body_mat))
 colnames(gene_body_mat) <- gsub("_pe", "",  colnames(gene_body_mat))
 colnames(gene_body_mat) <- gsub("\\.", "-",  colnames(gene_body_mat))
-gene_body_mat_tumor = gene_body_mat[ ,colnames(gene_body_mat)%in%epiallele_tumor$sample_barcode]
+gene_body_mat_tumor = gene_body_mat[ ,colnames(gene_body_mat)%in%epiallele_tumor$cell_barcode]
 
 ## Determine the missingness by colSums.
 missingness <- rowSums(is.na(gene_body_mat_tumor)/dim(gene_body_mat_tumor)[2])
@@ -206,13 +205,13 @@ meth_genes_keep = which(missingness < 0.9) # regions with at least 10% of the sa
 genebody_tumor_filt = data.matrix(gene_body_mat_tumor[meth_genes_keep, ])
 
 ## Gene body epimutation rates.
-gb_epimut <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/methylation/Samples-passQC_single_cells_individual_gene_body-specific_PDR-filtered.txt", sep="\t", row.names=1, header=T, stringsAsFactors = F)
+gb_epimut <- read.table("data/Samples-passQC_single_cells_individual_gene_body-specific_PDR-filtered.txt", sep="\t", row.names=1, header=T, stringsAsFactors = F)
 
 ## Revise the sample names to match between the promoter methylation data.
 colnames(gb_epimut) <- gsub("\\.", "-",  colnames(gb_epimut))
 
 ## Restrict to only tumor cells.
-gb_epimut_tumor = gb_epimut[ ,colnames(gb_epimut)%in%epiallele_tumor$sample_barcode]
+gb_epimut_tumor = gb_epimut[ ,colnames(gb_epimut)%in%epiallele_tumor$cell_barcode]
 
 ## Determine the missingness by colSums.
 missingness <- rowSums(is.na(gb_epimut_tumor)/dim(gb_epimut_tumor)[2])
@@ -233,18 +232,18 @@ gb_epimut_tumor_filt = data.matrix(gb_epimut_tumor[epimut_genes_keep, ])
 hist(as.numeric(genebody_tumor_filt["ENSG00000146648",]))
 hist(as.numeric(gb_epimut_tumor_filt["ENSG00000146648",]))
 
-## Build a data.frame with promoter-level DNA methylation:
+## Build a data.frame with genebody-level DNA methylation:
 genebody_tumor_filt = as.data.frame(genebody_tumor_filt)
 genebody_tumor_filt$gene = rownames(genebody_tumor_filt)
 gg_genebody_meth = genebody_tumor_filt %>% 
-  gather(sample, methylation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-UC-917-01D-S5M-95S5`) %>% 
+  gather(sample, methylation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-SM-019-01D-S5M-95S5`) %>% 
   select(sample, gene, methylation)
 
-## Build a data.frame with promoter-level epimutation:
+## Build a data.frame with genebody-level epimutation:
 gb_epimut_tumor_filt = as.data.frame(gb_epimut_tumor_filt)
 gb_epimut_tumor_filt$gene = rownames(gb_epimut_tumor_filt)
 gg_genebody_epimut = gb_epimut_tumor_filt %>% 
-  gather(sample, epimutation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-UC-917-01D-S5M-95S5`) %>% 
+  gather(sample, epimutation, `SCGP-SM-001-01D-S5M-01S5`:`SCGP-SM-019-01D-S5M-95S5`) %>% 
   select(sample, gene, epimutation)
 
 ## Sanity check number 2:
@@ -252,7 +251,7 @@ gg_genebody_meth %>% filter(gene=="ENSG00000146648")
 gg_genebody_epimut  %>% filter(gene=="ENSG00000146648")
 
 ## Combine these two regulatory matrices.
-IDHsamples <- c("SM001", "SM002", "SM004", "SM008", "SM015", "UC917")
+IDHsamples <- c("SM001", "SM002", "SM004", "SM008", "SM015", "SM019")
 gg_genebody_reg = gg_genebody_meth %>% 
   inner_join(gg_genebody_epimut, by=c("sample", "gene")) %>% 
   filter(!is.na(epimutation)) %>% 
@@ -266,7 +265,7 @@ gg_genebody_reg_sub = gg_genebody_reg %>%
             epim_avg = mean(epimutation))
 
 ## Plot gene-body DNA methylation.
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5b-genebody-disorder-DNAme.pdf", height = 4, width = 6, useDingbats=FALSE)
+pdf(file = "results/Fig2/SuppFig5b-genebody-disorder-DNAme.pdf", height = 4, width = 6, useDingbats=FALSE)
 ggplot(gg_genebody_reg_sub, aes(x=epim_avg, y=meth_avg) ) + 
   geom_point(alpha=0.5, size=0.75, aes(colour = meth_avg)) +
   scale_colour_viridis() +
@@ -288,7 +287,7 @@ p2 = ggplot(gg_genebody_reg_sub, aes(x=epim_avg, y=meth_avg) ) +
   facet_grid(~subtype) +
   labs(x="", y="", color = "DNAme\nlevel") 
 
-ggsave("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig2/SuppFig5b-genebody-disorder-DNAme.png",
+ggsave("results/Fig2/SuppFig5b-genebody-disorder-DNAme.png",
        p2,
        width = 6,
        height = 4,

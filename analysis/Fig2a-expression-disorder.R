@@ -5,7 +5,7 @@
 ##################################################
 
 # Working directory for this analysis in the SCGP project. 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###################################
@@ -15,6 +15,8 @@ library(openxlsx)
 library(Seurat)
 library(EnvStats)
 library(ggpubr)
+# Method to determine "high" levels based on ranked data.
+source("singlecellglioma-verhaaklab/analysis//ROSE-high-delineation.R")
 ###################################
 
 ## Generate plot theme.
@@ -29,53 +31,35 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
+null_x        <- theme(axis.title.x=element_blank(),
+                       axis.text.x=element_blank(),
+                       axis.ticks.x=element_blank())
+
+
 ## Load the SCGP raw counts matrix that has already been filtered for quality metrics.
-scgp_obj <- ReadH5AD("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/10X-aggregation-20190905/RV18001-2-3-RV19001-2-4-5-6-7-8-9-qc_20190827.h5ad")
-scgp_obj@meta.data$cell_name <- rownames(scgp_obj@meta.data)
+scgp_obj <- ReadH5AD("data/analysis_scRNAseq_tumor_counts.h5ad")
+scgp_obj@meta.data$cell_barcode <- rownames(scgp_obj@meta.data)
 avail_genes = rownames(scgp_obj@assays$RNA@data)
 
-## Load the subject-level metadata.
-meta_data = readWorkbook("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/clinical/scgp-subject-metadata.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
+## Cell state information.
+meta_10x <- read.csv("data/analysis_scRNAseq_tumor_metadata.csv", sep = ",", header = TRUE)
 
-## Filter to only IDHmut tumor cells.
-meta_10x <- readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/10X-aggregation-20190905/RV18001-2-3-RV19001-2-4-5-6-7-8-9_metadata.Rds")
+### Load the subject-level metadata.
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
 
-## Extract the numeric sample identifier for IDHmut samples.
+# Limit to IDHmut samples.
 meta_10x_mut <- meta_10x %>% 
-  filter(grepl("-0$|-1$|-2$|-3$|-6$|-8$", rownames(meta_10x)))
-meta_10x_mut$sample_id = sapply(strsplit(meta_10x_mut$cell_name, "-"), "[[", 3)
+  filter(case_barcode%in%c("SM019", "SM001", "SM002", "SM004", "SM008", "SM015"))
 
-## Cell populations were manually annotated using marker genes. Note: that these are relatively broad classifications.
-mut_clust_annot = meta_10x_mut %>% 
-  mutate(cell_type = recode(dbCluster, `1` = "differentiated_tumor",  `2` = "myeloid", `3` = "stemcell_tumor",
-                            `4` = "oligodendrocyte", `5` = "prolif_stemcell_tumor", `6` = "granulocyte", `7` = "endothelial",
-                            `8` = "t_cell", `9` = "pericyte", `10` = "fibroblast", `11` = "b_cell", `12` = "dendritic_cell")) 
-cells_to_keep = which(mut_clust_annot$cell_type%in%c("differentiated_tumor", "stemcell_tumor", "prolif_stemcell_tumor"))
-mut_clust_annot <- mut_clust_annot[cells_to_keep, ]
-# Extract the exact name of cells.
-cell_names_keep <- mut_clust_annot$cell_name
-
-# Create sample-specific labels for each patient to make it easier to refer back.
-mut_clust_annot = mut_clust_annot %>% 
-  mutate(sample_id = sapply(strsplit(cell_name, "-"), "[[", 3),
-         case_barcode = recode(sample_id, `0` = "SM019",  
-                               `1` = "SM001", 
-                               `2` = "SM002",
-                               `3` = "SM004", 
-                               `4` = "SM006", 
-                               `5` = "SM011", 
-                               `6` = "SM008",
-                               `7` = "SM012", 
-                               `8` = "SM015", 
-                               `9` = "SM017", 
-                               `10` = "SM018")) 
+## Keep only tumor cells.
+cells_to_keep = which(meta_10x_mut$cell_state%in%c("Diff.-like", "Stem-like", "Prolif. stem-like"))
+mut_clust_annot <- meta_10x_mut[cells_to_keep, ]
 
 ## Subset to IDHmut tumor cells.
-scgp_obj_idh_mut_tumor <- subset(x = scgp_obj, subset = cell_name %in% mut_clust_annot$cell_name)
-
+scgp_obj_idh_mut_tumor <- subset(x = scgp_obj, subset = cell_barcode %in% mut_clust_annot$cell_barcode)
 
 ## Make a Seurat object with the standard pipeline through PCA.
-scgp_obj_idh_mut_tumor <- scgp_obj_idh_mut_tumor %>% 
+scgp_obj_idh_mut_tumor <- scgp_obj_idh_mut_tumor %>%
   Seurat::NormalizeData() %>%
   FindVariableFeatures(selection.method = "mvp", nfeatures = length(avail_genes)) 
 
@@ -83,23 +67,84 @@ scgp_obj_idh_mut_tumor <- scgp_obj_idh_mut_tumor %>%
 rna_var_mut = scgp_obj_idh_mut_tumor@assays$RNA@meta.features
 rna_var_mut$gene_id <- rownames(rna_var_mut)
 
-## Read in previously calculated promoter epimutation matrix.
-epimut_prom_total_filt <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/epimut_promoter_total_filt-20210207.txt", header = T, sep="\t")
-epimut_pomoter_IDHm_total_filt <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/epimut_promoter_idhmut_filt-20210207.txt", header = T, sep="\t")
+
+######################################
+### DNAme disorder / PDR estimates ###
+######################################
+## Determine promoter-level PDR levels based on categories (i.e., high vs. low):
+prom_epimut <- read.table("data/Samples-passQC_single_cells_individual_promoter-specific_PDR-filtered.txt", sep="\t", row.names=1, header=T, stringsAsFactors = F)
+## Revise the sample names to match between the promoter methylation data.
+colnames(prom_epimut) <- gsub("\\.", "-",  colnames(prom_epimut))
+
+## Additional information about single-cells passing QC.
+rrbs_qc <- read.table(file="data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
+
+### Load the subject-level metadata.
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
+
+## Restrict to the samples that pass the general QC guidelines of CpG count, bisulfite conversion, and tumor status (inferred CNVs).
+rrbs_qc_pass <- rrbs_qc %>% 
+  filter(cpg_unique > 40000, bisulfite_conversion_rate > 95, tumor_status == 1) %>% 
+  left_join(meta_data, by="case_barcode") %>% 
+  mutate(IDH_status = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut"))
+
+## Define subgroups based on IDHmut status.
+rrbs_qc_pass_wt = rrbs_qc_pass %>% filter(IDH_status=="IDHwt")
+rrbs_qc_pass_mut = rrbs_qc_pass %>% filter(IDH_status=="IDHmut")
+
+## Restrict to only tumor cells.
+prom_epimut_tumor = prom_epimut[, colnames(prom_epimut)%in%rrbs_qc_pass$cell_barcode]
+
+## Determine the missingness by colSums.
+missingness <- rowSums(is.na(prom_epimut_tumor)/dim(prom_epimut_tumor)[2])
+## Identify the number of gene promoters measured in at least 100 cells.
+sum(missingness<(1-100/844))
+
+## Restrict to genes covered in at least 100 tumor cells samples:
+epimut_prom_cov <- as.data.frame(rowSums(!is.na(prom_epimut_tumor)))
+epimut_prom_avg <- as.data.frame(rowMeans(prom_epimut_tumor, na.rm = TRUE))
+epimut_prom_total = cbind(epimut_prom_avg, epimut_prom_cov)
+colnames(epimut_prom_total) <- c("tumor_pdr", "tumor_cov")
+epimut_prom_total$gene_id <- rownames(epimut_prom_total)
+epimut_prom_total_filt = epimut_prom_total %>% 
+  filter(tumor_cov>100)
+
+## The distribution is heavily tilted toward low epimutation rate.
+hist(epimut_prom_total_filt$tumor_pdr)
+ggplot(epimut_prom_total_filt, aes(x=tumor_cov, y=tumor_pdr)) + geom_point(alpha=0.2) +
+  xlim(0, 844) + stat_cor(method="spearman") +
+  plot_theme
+
+## Create sort-able object for plotting by increasing gene promoter epimutation.
+sort_df <- epimut_prom_total_filt %>%
+  arrange(desc(tumor_pdr)) 
+gene_order <- rev(unique(sort_df$gene_id))
+epimut_prom_total_filt <- epimut_prom_total_filt %>% mutate(gene_id = factor(gene_id, levels = gene_order))
+
+## Quick visualization.
+ggplot(epimut_prom_total_filt, aes(x=gene_id)) +
+  geom_point(aes(y=tumor_pdr)) +
+  plot_theme +
+  null_x
+
+## Determine the CUTOFF for high gene promoter epimutation.
+epimut_vector = epimut_prom_total_filt$tumor_pdr
+calculate_cutoff(epimut_vector) # 0.399 is the cut-off for "high" DNAme disorder (aka epimutation).
+
+## Add the new variable for classification:
+epimut_prom_total_filt = epimut_prom_total_filt %>% 
+  mutate(tumor_class = ifelse(tumor_pdr > 0.399, "high", "low"))
 
 ## Combine RNA data with promoter epimutation data.
 rna_var_mut_epi = rna_var_mut %>% 
   inner_join(epimut_prom_total_filt, by="gene_id")
-## Alternatively, just IDHmut genes.
-#rna_var_mut_epi = rna_var_mut %>% 
-#  inner_join(epimut_pomoter_IDHm_total_filt, by="gene_id")
 
-## Break into groups based on levels of epimutation (low, intermediate, and high). 
+## Break into groups based on levels of DNAme disorder (epimutation; low, intermediate, and high).
+## Breaks were chosen to represent easy to follow groups of 0.1 increments with 0.4 and greater being high epimutation.
 rna_var_mut_epi$epimut_groups <-cut(rna_var_mut_epi$tumor_pdr, c(-0.01, 0.1, 0.2, 0.3, 0.4, 1.1))
-#rna_var_mut_epi$epimut_groups <-cut(rna_var_mut_epi$IDHmut_pdr, c(-0.01, 0.1, 0.2, 0.3, 0.4, 1.1))
 
 ## How do these groups look in terms of total number of genes.
-table(rna_var_mut_epi$epimut_groups) # Fewer genes with high epimutation.
+table(rna_var_mut_epi$epimut_groups) # Fewer genes with high DNAme disorder.
 
 ## Plots for both gene expression and variability that is controlled for expression levels.
 ## The dispersion method helps control for the relationship between variability and average expression.
@@ -119,55 +164,28 @@ ggplot(rna_var_mut_epi, aes(x=epimut_groups, y=mvp.dispersion.scaled)) +
   stat_compare_means(comparisons = my_comparisons)  + 
   stat_n_text(y.pos = -3.25) 
 
+## There are some outliers that squish the graph making it difficult to visually observe the shift.
 ggplot(rna_var_mut_epi, aes(x=epimut_groups, y=mvp.mean)) + 
-  geom_boxplot(outlier.shape = NA) +
+  geom_boxplot() +
   stat_compare_means(method="kruskal.test") + 
-  ylim(0, 0.75) + 
   labs(x="Promoter epimutation groups", y="Mean expression") +
   plot_theme + 
   stat_n_text(y.pos = 1)
 
 
 ######################
-### IDHwt
+### IDHwt         ####
 ######################
-## Re-load the SCGP raw counts matrix that has already been filtered for quality metrics.
-scgp_obj <- ReadH5AD("/Users/johnsk/Documents/Single-Cell-DNAmethylation/10X/10X-aggregation-20190905/RV18001-2-3-RV19001-2-4-5-6-7-8-9-qc_20190827.h5ad")
-scgp_obj@meta.data$cell_name <- rownames(scgp_obj@meta.data)
-avail_genes = rownames(scgp_obj@assays$RNA@data)
-
-## Extract the numeric sample identifier for IDHmut samples.
+# Limit to IDHwt samples.
 meta_10x_wt <- meta_10x %>% 
-  filter(grepl("-4$|-5$|-7$|-9$|-10$", rownames(meta_10x)))
-meta_10x_wt$sample_id = sapply(strsplit(meta_10x_wt$cell_name, "-"), "[[", 3)
+  filter(case_barcode%in%c("SM006", "SM012", "SM017", "SM018", "SM011"))
 
-## Cell populations were manually annotated using marker genes. Note: that these are relatively broad classifications.
-wt_clust_annot = meta_10x_wt %>% 
-  mutate(cell_type = recode(dbCluster, `1` = "differentiated_tumor",  `2` = "myeloid", `3` = "stemcell_tumor",
-                            `4` = "oligodendrocyte", `5` = "prolif_stemcell_tumor", `6` = "granulocyte", `7` = "endothelial",
-                            `8` = "t_cell", `9` = "pericyte", `10` = "fibroblast", `11` = "b_cell", `12` = "dendritic_cell")) 
-cells_to_keep = which(wt_clust_annot$cell_type%in%c("differentiated_tumor", "stemcell_tumor", "prolif_stemcell_tumor"))
-wt_clust_annot <- wt_clust_annot[cells_to_keep, ]
-# Extract the exact name of cells.
-cell_names_keep <- wt_clust_annot$cell_name
-
-# Create sample-specific labels for each patient to make it easier to refer back.
-wt_clust_annot = wt_clust_annot %>% 
-  mutate(sample_id = sapply(strsplit(cell_name, "-"), "[[", 3),
-         case_barcode = recode(sample_id, `0` = "SM019",  
-                               `1` = "SM001", 
-                               `2` = "SM002",
-                               `3` = "SM004", 
-                               `4` = "SM006", 
-                               `5` = "SM011", 
-                               `6` = "SM008",
-                               `7` = "SM012", 
-                               `8` = "SM015", 
-                               `9` = "SM017", 
-                               `10` = "SM018")) 
+## Keep only tumor cells.
+cells_to_keep = which(meta_10x_wt$cell_state%in%c("Diff.-like", "Stem-like", "Prolif. stem-like"))
+wt_clust_annot <- meta_10x_wt[cells_to_keep, ]
 
 ## Subset to IDHwt tumor cells.
-scgp_obj_idh_wt_tumor <- subset(x = scgp_obj, subset = cell_name %in% wt_clust_annot$cell_name)
+scgp_obj_idh_wt_tumor <- subset(x = scgp_obj, subset = cell_barcode %in% wt_clust_annot$cell_barcode)
 
 ## Make a Seurat object with the standard pipeline through PCA.
 scgp_obj_idh_wt_tumor <- scgp_obj_idh_wt_tumor %>% 
@@ -178,22 +196,12 @@ scgp_obj_idh_wt_tumor <- scgp_obj_idh_wt_tumor %>%
 rna_var_wt = scgp_obj_idh_wt_tumor@assays$RNA@meta.features
 rna_var_wt$gene_id <- rownames(rna_var_wt)
 
-## Read in previously calculated promoter epimutation matrix.
-epimut_prom_total_filt <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/epimut_promoter_total_filt-20210207.txt", header = T, sep="\t")
-epimut_pomoter_IDHwt_total_filt <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/epimut_promoter_idhwt_filt-20210207.txt", header = T, sep="\t")
-
 ## Combine RNA data with promoter epimutation data.
 rna_var_wt_epi = rna_var_wt %>% 
   inner_join(epimut_prom_total_filt, by="gene_id")
-## Alternatively, just IDHmut defined epimut classes.
-#rna_var_wt_epi = rna_var_wt %>% 
-#  inner_join(epimut_pomoter_IDHwt_total_filt, by="gene_id") %>% 
-#  filter(!is.na(IDHwt_pdr))
 
 ## Break into groups based on levels of epimutation (low, intermediate, and high). 
 rna_var_wt_epi$epimut_groups <-cut(rna_var_wt_epi$tumor_pdr,c(-0.01, 0.1, 0.2, 0.3, 0.4, 1.1))
-## Alternative: just IDHwt cells.
-#rna_var_wt_epi$epimut_groups <-cut(rna_var_wt_epi$IDHwt_pdr, c(-0.01, 0.1, 0.2, 0.3, 0.4, 1.1))
 
 ## How do these groups look in terms of total number of genes.
 table(rna_var_wt_epi$epimut_groups) # Fewer genes with high epimutation.
@@ -216,9 +224,8 @@ ggplot(rna_var_wt_epi, aes(x=epimut_groups, y=mvp.dispersion.scaled)) +
   stat_n_text(y.pos = -3.25) 
 
 ggplot(rna_var_wt_epi, aes(x=epimut_groups, y=mvp.mean)) + 
-  geom_boxplot(outlier.shape = NA) +
+  geom_boxplot() +
   stat_compare_means(method="kruskal.test") + 
-  ylim(0, 0.75) + 
   labs(x="Promoter epimutation groups", y="Mean expression") +
   plot_theme + 
   stat_n_text(y.pos = 1)
@@ -237,7 +244,7 @@ rna_var_all_epi_express = rna_var_all_epi %>%
   mutate(IDHstatus = recode(IDHstatus, "mvp.mean.IDHwt" = "IDHwt", "mvp.mean.IDHmut" = "IDHmut"))
 
 
-pdf(file = "github/results/Fig2/Fig2a-violin-expression-disorder-restricted-violin.pdf", width = 7, height = 5, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig2/Fig2a-violin-expression-disorder-restricted-violin.pdf", width = 7, height = 5, useDingbats = FALSE, bg="transparent")
 ggplot(rna_var_all_epi_express, aes(x=epimut_groups, y=mean_expression, fill=IDHstatus)) + 
   geom_violin(width=1.1) +
   geom_boxplot(width=0.15, color="black", alpha=0.2, outlier.shape = NA) +
@@ -251,10 +258,9 @@ ggplot(rna_var_all_epi_express, aes(x=epimut_groups, y=mean_expression, fill=IDH
   facet_grid(. ~ IDHstatus, scales = "free_x", space = "free")
 dev.off()
 
-pdf(file = "github/results/Fig2/Fig2a-violin-expression-disorder-restricted.pdf", width = 6, height = 4, useDingbats = FALSE, bg="transparent")
+pdf(file = "github/results/Fig2/Fig2a-boxplot-expression-disorder.pdf", width = 6, height = 4, useDingbats = FALSE, bg="transparent")
 ggplot(rna_var_all_epi_express, aes(x=epimut_groups, y=mean_expression, fill=IDHstatus)) + 
-  geom_boxplot(outlier.shape = NA) +
-  ylim(0, 0.9) + 
+  geom_boxplot() +
   scale_fill_manual(values=c("IDHwt" = "#7fbf7b", 
                              "IDHmut" = "#af8dc3")) +
   labs(x="Promoter DNAme disorder groups", y="Mean expression log(cpm)", fill="Glioma subtype") +
@@ -262,32 +268,6 @@ ggplot(rna_var_all_epi_express, aes(x=epimut_groups, y=mean_expression, fill=IDH
   theme(legend.position="bottom",
         panel.spacing.x = unit(1.5, "lines")) +
   facet_grid(. ~ IDHstatus, scales = "free_x", space = "free")
-dev.off()
-
-
-
-rna_var_all_epi_dispersion = rna_var_all_epi %>% 
-  gather(IDHstatus, dispersion_scaled, c("mvp.dispersion.scaled.IDHwt", "mvp.dispersion.scaled.IDHmut")) %>%
-  mutate(IDHstatus = recode(IDHstatus, "mvp.dispersion.scaled.IDHwt" = "IDHwt", "mvp.dispersion.scaled.IDHmut" = "IDHmut"))
-
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/RNA-dispersion-promoter-epimutation-outliers-20210207.pdf", width = 9, height = 5)
-ggplot(rna_var_all_epi_dispersion, aes(x=epimut_groups, y=dispersion_scaled, fill=IDHstatus)) + geom_boxplot() +
-  scale_fill_manual(values=c("IDHwt" = "#7fbf7b", 
-                             "IDHmut" = "#af8dc3")) +
-  labs(x="Gene epimutation groups", y="Expression dispersion (mean-scaled)",  fill="Glioma subtype") +
-  plot_theme +
-  facet_grid(. ~ IDHstatus, scales = "free_x", space = "free") 
-dev.off()
-
-
-pdf(file = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/epimutation/RNA-dispersion-promoter-epimutation-20210207.pdf", width = 9, height = 5)
-ggplot(rna_var_all_epi_dispersion, aes(x=epimut_groups, y=dispersion_scaled, fill=IDHstatus)) + geom_boxplot(outlier.shape = NA) +
-  ylim(-1.75, 1.75) +  
-  scale_fill_manual(values=c("IDHwt" = "#7fbf7b", 
-                             "IDHmut" = "#af8dc3")) +
-  labs(x="Gene epimutation groups", y="Expression dispersion (mean-scaled)",  fill="Glioma subtype") +
-  plot_theme +
-  facet_grid(. ~ IDHstatus, scales = "free_x", space = "free") 
 dev.off()
 
 

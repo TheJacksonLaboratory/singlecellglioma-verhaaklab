@@ -4,9 +4,10 @@
 # Author: Kevin J.
 ###################################
 
-# Working directory for this analysis in the SCGP project. 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+# Working directory for this analysis.
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
+
 
 ###################################
 ## Load the essential packages.
@@ -15,61 +16,48 @@ library(grid)
 library(gridExtra)
 library(gtable)
 library(egg)
-library(openxlsx)
 library(EnvStats)
 ###################################
 
-## Load in the data with the total number of epialleles.
-## Load the SCGP subject-level metadata.
-full_meta_data = readWorkbook("/Users/johnsk/mnt/verhaak-lab/scgp/data/clinical/scgp-subject-metadata.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
+### Load the subject-level metadata.
+meta_data = read.csv("data/clinical_metadata.csv", sep = ",", header = TRUE)
+meta_data <- meta_data %>% 
+  mutate(idh_status = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut")) 
 
-## Need to extract subtype and IDHmut status.
-meta_data = full_meta_data %>% 
-  select(case_barcode = subject_id, subtype) %>% 
-  mutate(idh_status = ifelse(subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
-  mutate(case_barcode_short = gsub("-", "", substr(case_barcode, 6, 11)))
+## Load the context-specific scRRBS DNAme disorder data.
+disorder <- read.csv("data/analysis_scRRBS_context_specific_DNAme_disorder.csv", sep = ",", header = TRUE)
 
+## Load the scRRBS qc data
+rrbs_qc <- read.csv("data/analysis_scRRBS_sequencing_qc.csv", sep = ",", header = TRUE)
 
 ######### CLINICAL ##########
-## Load in clinical data (subtype, age, treatment, hypermutation_status).
-# Supply metadata so that 10X filenames and samples can be linked together.
-metadata = readWorkbook("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/clinical/scgp-subject-metadata.xlsx", sheet = 1, startRow = 1, colNames = TRUE)
-metadata$`10X_id_short` <- as.character(metadata$`10X_id_short`)
-clin_data = metadata %>% 
-  mutate(case_barcode = gsub("-", "", substr(subject_id, 6, 11))) %>% 
-  mutate(idh_status = ifelse(subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
-  select(case_barcode, idh_codel_subtype = subtype, idh_status, grade = who_grade, timepoint = initial_recurrence,  is_hypermutator = hypermutation)
+clin_data = meta_data %>%
+  mutate(is_hypermutator = ifelse(case_barcode=="SM011", 1, 0)) %>% 
+  select(case_barcode, idh_codel_subtype, idh_status, grade = who_grade, timepoint = time_point,  is_hypermutator)
 
 ######## Mutation Freq. ###########
-epi_mut_hmapdata = read.table("/Users/johnsk/mnt/verhaak-lab/scgp/results/mutation_vs_epimutation/Samples_WGS_epimutation_and_mutation_rates.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
-epi_mut_hmapdata = epi_mut_hmapdata %>% 
-  mutate(idh_status = ifelse(subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
-  select(case_barcode = Patient, idh_codel_subtype = subtype, idh_status, timepoint = initial_recurrence, mut_freq = global)
+mut_hmapdata <- meta_data %>% 
+  select(case_barcode, idh_codel_subtype, idh_status, timepoint = time_point, mut_freq = mutations_per_megabase)
 
 ######### Aneuploidy CNVs #########
-aneuploidy_hmapdata = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/wgs/scgp_aneuploidy_hmp_data.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
-aneuploidy_hmapdata = aneuploidy_hmapdata %>% 
-  mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut")) 
+aneuploidy_hmapdata = meta_data  %>% 
+  select(case_barcode, idh_codel_subtype, idh_status, timepoint = time_point, aneuoploidy_value = somatic_copy_number_alt_burden)
+
+
+##### DNAme disorder #######
+gg_epiallele <- rrbs_qc %>%
+  inner_join(meta_data, by="case_barcode") %>% 
+  filter(tumor_status==1) %>%
+  inner_join(disorder, by=c("cell_barcode", "case_barcode")) %>% 
+  select(cell_barcode, case_barcode, PDR, idh_status, idh_codel_subtype)
+
 
 ########### Combine annotation meta data ############
 meta_comb = clin_data %>% 
-  left_join(epi_mut_hmapdata, by=c("case_barcode", "idh_codel_subtype")) %>% 
-  left_join(aneuploidy_hmapdata, by=c("case_barcode", "idh_codel_subtype")) %>% 
+  left_join(mut_hmapdata, by=c("case_barcode", "idh_status", "idh_codel_subtype", "timepoint")) %>% 
+  left_join(aneuploidy_hmapdata, by=c("case_barcode", "idh_status", "idh_codel_subtype", "timepoint")) %>% 
   mutate(`1p_19q_codel` = ifelse(idh_codel_subtype=="IDHmut_codel", 1, 0)) %>% 
-  select(case_barcode:grade, `1p_19q_codel`,  idh_status, timepoint = timepoint.x,  mut_freq, aneuoploidy_value)
-                          
-
-##### Epimutation ##############
-epiallele_info <- read.table(file="/Users/johnsk/mnt/verhaak-lab/scgp/results/epimutation/rerun-reformatted_deduplicated-final_recalculated/Samples-passQC_single_cells_global_and_context-specific_pdr_score_table.txt", sep="\t", header=T, stringsAsFactors = F)
-
-## Create a new variable to indicate "non_tumor" or shortened case barcode.
-gg_epiallele = epiallele_info %>% 
-  #mutate(case_normal_barcode = ifelse(tumor_cnv==0, "Non-tumor", gsub("-","", substr(sample, 6, 11)))) %>% 
-  mutate(case_barcode = gsub("-","", substr(sample, 6, 11))) %>% 
-  left_join(meta_data, by=c("sample"="case_barcode")) %>% 
-  #  mutate(idh_codel_subtype = ifelse(case_normal_barcode=="Non-tumor", "Non-tumor", subtype)) %>% 
-  select(sample_barcode, case_barcode, PDR, idh_status, idh_codel_subtype = subtype)
-
+  select(case_barcode:grade, `1p_19q_codel`,  idh_status, timepoint,  mut_freq, aneuoploidy_value)
 
 
 ##################################################
@@ -170,7 +158,7 @@ gg_blank <-
 ## Plot clinical
 ########################
 subtype_order <- c("IDHmut", "IDHwt")
-case_order <- c("SM004", "SM001", "SM015", "UC917", "SM002", "SM008", "SM006", "SM012", "SM017", "SM018", "SM011")
+case_order <- c("SM004", "SM001", "SM015", "SM019", "SM002", "SM008", "SM006", "SM012", "SM017", "SM018", "SM011")
 meta_comb <- meta_comb %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 meta_comb <- meta_comb %>% mutate(idh_status = factor(idh_status, levels = subtype_order))
 
@@ -183,11 +171,11 @@ gg_timepoint <-
                        labels = c("Timepoint"))) %>%
   ggplot(aes(x=case_barcode)) +
   geom_tile(aes(fill = factor(value), y = type)) +
-  scale_fill_manual(values = c("initial" = "#CA2F66", "recurrence" = "#2FB3CA")) +
+  scale_fill_manual(values = c("Initial" = "#CA2F66", "Recurrence" = "#2FB3CA")) +
   labs(y="", fill = "Clinical")
 
 ## Relabel some of the variables.
-gg_timepoint$data$value <- factor(gg_timepoint$data$value, levels = c("initial", "recurrence"))
+gg_timepoint$data$value <- factor(gg_timepoint$data$value, levels = c("Initial", "Recurrence"))
 testPlot(gg_timepoint)
 
 gg_codel <-
@@ -210,6 +198,7 @@ testPlot(gg_codel)
 ###########################
 ### Mutation frequency
 ###########################
+## Setting a threshold to cap the hypermutation.
 meta_comb$mut_freq[meta_comb$case_barcode=="SM011"] <- 15
 gg_mf = ggplot() +
   geom_tile(data = meta_comb, aes(x = case_barcode, y = 1, fill = mut_freq), color = "black") +
@@ -247,18 +236,18 @@ testPlot(gg_epimut)
 
 
 ############################
-### Epimutation variation per sample
+### Epimutation summary per sample
 ############################
-gg_epimut_mad <- gg_epiallele %>% 
+gg_epimut_summary <- gg_epiallele %>% 
   group_by(case_barcode) %>% 
   summarise(epimut_mad = mad(PDR),
             epimut_median = median(PDR))
 
-gg_epimut_mad = gg_epimut_mad %>% 
+meta_comb_epimut = gg_epimut_summary %>% 
   inner_join(meta_comb, by="case_barcode")
 
 gg_epimut_var = ggplot() +
-  geom_tile(data = gg_epimut_mad, aes(x = case_barcode, y = 1, fill = epimut_mad), color = "black") +
+  geom_tile(data = meta_comb_epimut, aes(x = case_barcode, y = 1, fill = epimut_mad), color = "black") +
   labs(y = "", fill = "Epimutation variability") +
   scale_fill_distiller(palette = "Greens", direction = 1)
 testPlot(gg_epimut_var)
@@ -291,28 +280,27 @@ g$heights[panels] <- unit(c(4, 0.25, 0.25, 0.25, 0.25), "null")
 plot(g)
 plot(gleg)
 
-pdf(file = "github/results/Fig1/Fig1e-DNAme-disorder.pdf", height = 4, width = 6, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig1/Fig1e-DNAme-disorder-publication.pdf", height = 4, width = 6, useDingbats = FALSE, bg="transparent")
 grid.newpage()
 grid.draw(g)
 dev.off()
 
-pdf(file = "github/results/Fig1/Fig1e-DNAme-disorder-legend.pdf", width = 4, height = 6, useDingbats = FALSE)
+pdf(file = "results/Fig1/Fig1e-DNAme-disorder-legend.pdf", width = 4, height = 6, useDingbats = FALSE)
 grid.newpage()
 grid.draw(gleg)
 dev.off()
 
 
-### Calculate some statistics for the epimut
-meta_comb_stats = meta_comb %>% 
-  inner_join(gg_epimut_mad, by="case_barcode") 
 
 ## Test association between median epimutation value and "chromosomal instability"
-cor.test(meta_comb_stats$epimut_median, meta_comb_stats$aneuoploidy_value, method="s") 
+cor.test(meta_comb_epimut$epimut_median, meta_comb_epimut$aneuoploidy_value, method="s") 
 ## Test association between median epimutation value and "Mutations/Mb".
-meta_comb_stats$mut_freq[meta_comb_stats$case_barcode=="SM011"] <- 269.8537783
-cor.test(meta_comb_stats$epimut_median, log10(meta_comb_stats$mut_freq), method="s") 
+meta_comb_epimut$mut_freq[meta_comb_epimut$case_barcode=="SM011"] <- 269.8537783
+cor.test(meta_comb_epimut$epimut_median, log10(meta_comb_epimut$mut_freq), method="s") 
 
 ## Test association between median epimutation value and MAD epimutation value.
-cor.test(meta_comb_stats$epimut_median, log10(meta_comb_stats$epimut_mad), method="s") 
+cor.test(meta_comb_epimut$epimut_median, log10(meta_comb_epimut$epimut_mad), method="s") 
 
+## Test the difference in global DNAme disorder across two subtypes.
+wilcox.test(gg_epiallele$PDR~gg_epiallele$idh_status)
 ### END ###

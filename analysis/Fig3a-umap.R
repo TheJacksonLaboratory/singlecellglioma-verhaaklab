@@ -50,7 +50,7 @@ scgp <- scgp %>%
   ScaleData(verbose = FALSE) %>% 
   RunPCA(pc.genes = scgp@var.genes, npcs = 20, verbose = FALSE)
 
-## Visualize.Note that this is going to yield a different output from Scanpy.
+## Visualize out of curiosity. Note that this is going to yield a different output from Scanpy, which uses different parameters.
 scgp <- scgp %>% 
   RunUMAP(reduction = "pca", dims = 1:20) %>% 
   FindNeighbors(reduction = "pca", dims = 1:20) %>% 

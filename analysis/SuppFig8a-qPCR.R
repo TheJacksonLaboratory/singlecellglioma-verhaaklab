@@ -4,7 +4,8 @@
 # Author: Kevin J.
 ###################################
 
-mybasedir = "/Users/johnsk/Documents/Single-Cell-DNAmethylation/"
+# Working directory for this analysis.
+mybasedir = "/Users/johnsk/github/"
 setwd(mybasedir)
 
 ###################################
@@ -25,8 +26,8 @@ plot_theme    <- theme_bw(base_size = 12) + theme(axis.title = element_text(size
                                                   axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black"))
 
 
-## Load data frame from CellTiterGlo assay.
-gsc_expression <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/gsc/gsc-biological-replicates.txt", sep="\t", header=T, stringsAsFactors = F)
+## Load data frame from qPCR experiments.
+gsc_expression <- read.table("data/gsc-biological-replicates.txt", sep="\t", header=T, stringsAsFactors = F)
 
 ## Define factors.
 oxygen_levels = c("21%", "2%", "1%")
@@ -43,7 +44,7 @@ gsc_expression_summary = gsc_expression %>%
   summarize(relative_ge_avg = mean(relative_gene_expression),
           relative_ge_sem = sem(relative_gene_expression))
 
-pdf("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/gsc/gsc-hypoxia-expression.pdf", width = 9, height = 5, useDingbats = FALSE)
+## Error bar + bar plot.
 ggplot(gsc_expression_summary, aes(x=gene, y=relative_ge_avg, fill= oxygen_concentration)) + 
   geom_bar(position= "dodge", stat="identity", colour="black") +
   geom_errorbar(aes(ymin=relative_ge_avg-relative_ge_sem, 
@@ -57,7 +58,7 @@ ggplot(gsc_expression_summary, aes(x=gene, y=relative_ge_avg, fill= oxygen_conce
                              "1%" = "#d7191c")) + 
   plot_theme +
   theme(panel.spacing.x = unit(1.5, "lines"))
-dev.off()
+
 
 
 gsc_expression_summary = gsc_expression %>% 
@@ -65,7 +66,7 @@ gsc_expression_summary = gsc_expression %>%
   summarize(relative_ge_avg = mean(relative_gene_expression),
             relative_ge_sem = sem(relative_gene_expression))
 
-pdf("/Users/johnsk/Documents/Single-Cell-DNAmethylation/github/results/Fig4/SuppFig8a-qPCR-expression.pdf", width = 7.5, height = 4, useDingbats = FALSE)
+pdf("results/Fig4/SuppFig8a-qPCR-expression.pdf", width = 7.5, height = 4, useDingbats = FALSE)
 ggplot(gsc_expression, aes(x=gene, y=relative_gene_expression, fill= oxygen_concentration)) + 
   geom_boxplot(outlier.shape = NA) +
   facet_wrap(~ cell_line, scales = "free_y") +

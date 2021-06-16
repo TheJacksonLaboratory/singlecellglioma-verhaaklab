@@ -4,6 +4,10 @@
 # Author: Kevin J.
 ##################################################
 
+## Working directory for this analysis.
+mybasedir = "/Users/johnsk/github/"
+setwd(mybasedir)
+
 ########################################
 # Necessary packages:
 library(tidyverse)
@@ -16,7 +20,7 @@ library(openxlsx)
 library(DBI)
 library(viridis)
 ########################################
-## Establish connection with database (publication version).
+## Establish connection with GLASS database (publication version).
 con <- DBI::dbConnect(odbc::odbc(), "VerhaakDB2")
 
 
@@ -28,7 +32,7 @@ subclonalselection = dbReadTable(con,  Id(schema="analysis", table="subclonalsel
 seqz_params = dbReadTable(con,  Id(schema="variants", table="seqz_params"))
 pairs = dbReadTable(con,  Id(schema="analysis", table="pairs"))
 silver_set = dbReadTable(con,  Id(schema="analysis", table="silver_set"))  
-clinical_tumor_pairs_query = read_file("/Users/johnsk/Documents/Life-History/GLASS-WG/sql/clinical/clinical-tumor-pairs-db2.sql")
+clinical_tumor_pairs_query = read_file("misc/clinical-tumor-pairs-db2.sql")
 clinical_tumor_pairs <- dbGetQuery(con, clinical_tumor_pairs_query)
 
 ## Create an IDHmut vs. IDHwt subtype-level.
@@ -36,12 +40,9 @@ subtypes = subtypes %>%
   mutate(idh_subtype = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut"))
 
 ######### Meth Changes ########
-summary_freq = readRDS("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-beta-discord-freq.rds")
+summary_freq = readRDS("data/glass-beta-discord-freq.rds")
 summary_freq = summary_freq %>% 
   mutate(idh_subtype = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut"))
-
-####### methylCIBERSORT #######
-#methylCS = readRDS(file ="/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-Mvals-annot.rds")
 
 ####### Purity   ########
 ## Load purity based on Sequenza (WXS|WGS) estimates:
@@ -67,7 +68,7 @@ puritydata = clinical_tumor_pairs %>%
 
 ## GENETIC-BASED DATA ##
 ###### Mutations ########
-mutfdata <- dbGetQuery(con, read_file("/Users/johnsk/Documents/Life-History/GLASS-WG/sql/heatmap/heatmap_mf.sql"))
+mutfdata <- dbGetQuery(con, read_file("misc/heatmap_mf.sql"))
 mut_freq_prop_case = mutfdata %>% 
   mutate(P = (count_a-intersection_ab)/union_ab,
          R =  (count_b-intersection_ab)/union_ab,
@@ -85,27 +86,21 @@ clin_data = clinical_tumor_pairs %>%
   filter(tumor_pair_barcode%in%unique(mutfdata$tumor_pair_barcode)) 
   
 ####### CNVs  ########
-anpldata <- dbGetQuery(con, read_file("/Users/johnsk/Documents/Life-History/GLASS-WG/sql/heatmap/heatmap_aneuploidy.sql"))
+anpldata <- dbGetQuery(con, read_file("misc/heatmap_aneuploidy.sql"))
 anpldata = anpldata %>% 
-  mutate(idh_subtype = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut")) %>% 
-  filter(case_barcode%in%unique(summary_freq$case_barcode))
-
-####### Selection       ########
-neutrdata <- dbGetQuery(con, read_file("/Users/johnsk/Documents/Life-History/GLASS-WG/sql/heatmap/heatmap_evolution.sql"))
-neutrdata = neutrdata %>% 
   mutate(idh_subtype = ifelse(idh_codel_subtype=="IDHwt", "IDHwt", "IDHmut")) %>% 
   filter(case_barcode%in%unique(summary_freq$case_barcode))
 
 
 ## METHYLATION-BASED DATA ##
 ####### MNP subtype switch  #######
-il450k_g_filt_meta_long = readRDS(file ="/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-Mvals-annot.rds")
+il450k_g_filt_meta_long = readRDS(file ="data/glass-Mvals-annot.rds")
 ## Retrieve a list of paired IDAT files
 il450k_g_filt_meta_wide = il450k_g_filt_meta_long %>% 
   select(case_barcode, timepoint, idat) %>% 
   mutate(timepoint = recode(timepoint, `0` = "initial", `1` = "recurrence")) %>% 
   spread(timepoint, idat) 
-mnp_class  <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/450k/results/glass-synapse/glass-mnp-classification-20190408.txt", sep="\t", header=T, stringsAsFactors = F)
+mnp_class  <- read.table("data/glass-mnp-classification-20190408.txt", sep="\t", header=T, stringsAsFactors = F)
 mnpdata = il450k_g_filt_meta_wide %>% 
   left_join(mnp_class, by=c("initial"= "idat")) %>% 
   left_join(mnp_class, by=c("recurrence"= "idat")) %>% 
@@ -114,7 +109,7 @@ mnpdata = il450k_g_filt_meta_wide %>%
   left_join(subtypes, by="case_barcode")
   
 #### RNA-based subtypes ######
-glass_rna  <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/public-rna-seq/glass-analysis_transcriptional_subtypes.tsv", sep="\t", header=T, stringsAsFactors = F)
+glass_rna  <- read.table("data/glass-analysis_transcriptional_subtypes.tsv", sep="\t", header=T, stringsAsFactors = F)
 
 ## Create a joinable sample_barcode.
 glass_rna_filt = glass_rna %>% 
@@ -133,7 +128,7 @@ rna_data = clinical_tumor_pairs %>%
   left_join(subtypes, by="case_barcode")
 
 ####### mDNAsi    #######
-mDNAsi  <- read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-mDNAsi-values.csv", sep=",", header=T, stringsAsFactors = F)
+mDNAsi  <- read.table("data/glass-mDNAsi-values.csv", sep=",", header=T, stringsAsFactors = F)
 mDNAsidata = il450k_g_filt_meta_wide %>% 
   left_join(mDNAsi, by=c("initial"= "idat")) %>% 
   left_join(mDNAsi, by=c("recurrence"= "idat")) %>% 
@@ -141,7 +136,7 @@ mDNAsidata = il450k_g_filt_meta_wide %>%
   left_join(subtypes, by="case_barcode")
 
 ####### epiTOC    #######
-epi_TOC = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-epiTOC-values.csv", sep = ",", row.names = 1, header = T)
+epi_TOC = read.table("data/glass-epiTOC-values.csv", sep = ",", row.names = 1, header = T)
 epi_TOCdata = il450k_g_filt_meta_wide %>% 
   left_join(epi_TOC, by=c("initial"= "idat")) %>% 
   left_join(epi_TOC, by=c("recurrence"= "idat")) %>% 
@@ -149,7 +144,7 @@ epi_TOCdata = il450k_g_filt_meta_wide %>%
   left_join(subtypes, by="case_barcode")
 
 ####### Horvath Clock    #######
-horvath = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/full_glass_horvath_betas_unnormalized.output.csv", sep = ",", row.names = 1, header = T)
+horvath = read.table("data/full_glass_horvath_betas_unnormalized.output.csv", sep = ",", row.names = 1, header = T)
 horvath$idat <- gsub("^X", "", rownames(horvath))
 horvathdata = il450k_g_filt_meta_wide %>% 
   left_join(horvath, by=c("initial"= "idat")) %>% 
@@ -158,7 +153,7 @@ horvathdata = il450k_g_filt_meta_wide %>%
   left_join(subtypes, by="case_barcode")
 
 ####### eITH    #######
-eITH = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/methylation/public/glass-eITH-values.csv", sep = ",", row.names = 1, header = T)
+eITH = read.table("data/glass-eITH-values.csv", sep = ",", row.names = 1, header = T)
 eITHdata = il450k_g_filt_meta_wide %>% 
   left_join(eITH, by=c("initial"= "idat")) %>% 
   left_join(eITH, by=c("recurrence"= "idat")) %>% 
@@ -176,7 +171,6 @@ summary_freq <- summary_freq %>% mutate(case_barcode = factor(case_barcode, leve
 puritydata <- puritydata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 anpldata  <- anpldata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 mut_freq_prop_case <- mut_freq_prop_case %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
-neutrdata <- neutrdata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 mnpdata <- mnpdata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 mDNAsidata <- mDNAsidata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
 epi_TOCdata <- epi_TOCdata %>% mutate(case_barcode = factor(case_barcode, levels = case_order))
@@ -373,21 +367,6 @@ gg_anpl_data <-
 
 testPlot(gg_anpl_data)
 
-#######################
-### Plot evolution
-#######################
-gg_evolution <-
-  neutrdata %>%
-  gather(key = "type", value = "value", evolution_a, evolution_b) %>%
-  mutate(type = factor(type,
-                       levels = c("evolution_b", "evolution_a"),
-                       labels = c("Recurrence", "Primary"))) %>%
-  ggplot(aes(x=case_barcode)) +
-  geom_tile(aes(fill = factor(value), y = type)) +
-  scale_fill_manual(values = c("N" = "#A3BD67", "S" = "#BD8167")) +
-  labs(y = "Evolution \nmode")
-
-testPlot(gg_evolution)
 
 #######################
 ### RNA
@@ -473,20 +452,6 @@ gg_mDNAsidata <-
 testPlot(gg_mDNAsidata)
 
 
-
-#gg_mDNAsidata <-
-#  mDNAsidata %>%
-#  gather(key = "type", value = "value", mDNAsi_a, mDNAsi_b) %>%
-#  mutate(type = factor(type,
-#                       levels = c("mDNAsi_b", "mDNAsi_a"),
-#                       labels = c("Recurrence", "Primary"))) %>%
-#  ggplot(aes(x=case_barcode)) +
-#  geom_tile(aes(fill = value, y = type)) +
-#  scale_fill_gradient(low = "#440154FF", high = "#FDE725FF") +
-#  labs(y = "Stemness\n(mDNAsi)")
-
-# testPlot(gg_mDNAsidata)
-
 ########################
 ## epiTOC
 ########################
@@ -528,7 +493,6 @@ testPlot(gg_eITHdata)
 
 
 
-###############################
 ##################################################
 ## Final combined plots
 ##################################################
@@ -546,7 +510,7 @@ g3 = ggplotGrob(gg_anpl_data + plot_grid + plot_theme + null_legend + null_x + n
 
 
 g = gtable_rbind(g1, g2, g3)
-gleg = gtable_rbind(gleg1, gleg2, gleg3)
+gleg = gtable_rbind(gleg1, gleg2)
 
 ## Adjust relative height of panels
 panels = g$layout$t[grep("panel", g$layout$name)]
@@ -556,7 +520,7 @@ plot(g)
 plot(gleg)
 
 
-pdf(file = "github/results/Fig7/Fig7e-longitudinal-DNAme.pdf", width = 6, height = 6, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig7/Fig7e-longitudinal-DNAme.pdf", width = 6, height = 6, useDingbats = FALSE, bg="transparent")
 grid.newpage()
 grid.draw(g)
 dev.off()

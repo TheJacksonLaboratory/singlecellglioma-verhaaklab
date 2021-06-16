@@ -211,8 +211,6 @@ mut_sigs.top_relative.annotated <- read.delim("~/Documents/scgp/mutational_patte
 # Reformat table for plotting
 mut_sigs.top_relative.annotated$Patient <- gsub("-","",gsub("SCGP-","",as.character(mut_sigs.top_relative.annotated$Patient)))
 
-mut_sigs.top_relative.annotated$Patient <- gsub("UC917","SM019",mut_sigs.top_relative.annotated$Patient)
-
 mut_sigs.top_relative.annotated$Patient <- factor(mut_sigs.top_relative.annotated$Patient, 
                                                   levels = c("SM004","SM001","SM015","SM019","SM002","SM008",
                                                              "SM006","SM012","SM017","SM018","SM011"))

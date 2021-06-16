@@ -46,13 +46,13 @@ rrbs_20x_pdr_plot <- rrbs_qc %>%
 rrbs_20x_hypoxia_pdr_plot <- rrbs_20x_pdr_plot %>% 
   filter(!rt_level=="10Gy")
 
-## Define factors.
+## Define factor levels.
 oxygen_levels = c("Normoxia", "Hypoxia")
 feature_levels <- c("global", "alu_repeat", "intergenic", "cgi_shore", "h1hesc_ezh2", "dnaseI", "h1hesc_ctcf_1", "cgi", "promoter", "enhancer")
 rrbs_20x_hypoxia_pdr_plot$feature_name <-  factor(rrbs_20x_hypoxia_pdr_plot$feature_name, levels = feature_levels)
 rrbs_20x_hypoxia_pdr_plot$o2_level <-  factor(rrbs_20x_hypoxia_pdr_plot$o2_level, levels = oxygen_levels)
 
-## Determine the relative DNAme disorder comparing hypoxia to normoxia replicateds.
+## Determine the relative DNAme disorder comparing hypoxia to normoxia replicates.
 rrbs_20x_hypoxia_pdr_plot_norm <- rrbs_20x_hypoxia_pdr_plot %>% 
   group_by(cell_line, timepoint, feature_name) %>%
   mutate_each(funs(./median(.[o2_level == "Normoxia"])), PDR)
@@ -119,7 +119,7 @@ dev.off()
 ###################
 ### Irradiation ###
 ###################
-## Remove any 3-day timepoint data and restrict to normoxia (i.e., exclude 9-day hypoxia).
+## Remove any 3-day timepoint data and restrict to 9-day normoxia (i.e., exclude 9-day hypoxia).
 rrbs_20x_rt_pdr_plot <- rrbs_20x_pdr_plot %>% 
   filter(timepoint=="9 days", o2_conc =="21%")
 

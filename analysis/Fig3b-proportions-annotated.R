@@ -33,7 +33,8 @@ clin_data = meta_data %>%
 
 ########### SINGLE CELL #############
 ## Load in proportions of cell types as defined by all captured AND by Neftel classifications.
-neftel_class = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/cell-state-labels-IDHwt.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
+## Neftel cell state classifications can be regenerated or loaded in.
+neftel_class = read.table("data/cell-state-labels-IDHwt.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
 neftel_prop = neftel_class %>% 
   select(case_barcode = sample_id, class) %>% 
   left_join(clin_data, by = "case_barcode") %>% 
@@ -42,8 +43,7 @@ neftel_prop = neftel_class %>%
   summarise(n = n()) %>% 
   mutate(freq = n / sum(n))
 
-venteicher_class = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/results/10X/cell-state-labels-IDHmut.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
-venteicher_class$case_barcode <- gsub("UC917", "SM019", venteicher_class$case_barcode)
+venteicher_class = read.table("data/cell-state-labels-IDHmut.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
 venteicher_prop = venteicher_class %>% 
   select(case_barcode, class) %>% 
   left_join(clin_data, by = "case_barcode") %>% 
@@ -54,7 +54,6 @@ venteicher_prop = venteicher_class %>%
 
 ## All subtypes together:
 cell_states <- rbind(neftel_prop, venteicher_prop) %>% ungroup()
-
 
 ## scRNAseq ##
 ## 2D UMAP coordinates.
@@ -99,25 +98,25 @@ rrbs_qc_pass <- rrbs_qc %>%
 disorder_mean <- disorder_cpg %>% 
   filter(cell_barcode%in%rrbs_qc_pass$cell_barcode) %>% 
   group_by(case_barcode) %>% 
-  summarise(disorder_mean = mean(global_PDR)) %>% 
+  summarise(disorder_mean = mean(PDR)) %>% 
   ungroup() %>% 
   select(case_barcode, disorder = disorder_mean)
 
 
 ######## Mutation Freq. ###########
-me_disorder_hmapdata = read.table("/Users/johnsk/mnt/verhaak-lab/scgp/results/mutation_vs_epimutation/Samples_WGS_epimutation_and_mutation_rates.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
-me_disorder_hmapdata = me_disorder_hmapdata %>% 
-  select(case_barcode = Patient, idh_codel_subtype = subtype, timepoint = initial_recurrence, mut_freq = global)
-#me_disorder_hmapdata$case_barcode <- gsub("UC917", "SM019", me_disorder_hmapdata$case_barcode)
+mut_hmapdata <- meta_data %>% 
+  mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
+  select(case_barcode, idh_codel_subtype, idh_status, timepoint = time_point, mut_freq = mutations_per_megabase)
 
 ######### Aneuploidy CNVs #########
-aneuploidy_hmapdata = read.table("/Users/johnsk/Documents/Single-Cell-DNAmethylation/data/wgs/scgp_aneuploidy_hmp_data.txt", sep = "\t", stringsAsFactors = FALSE, header = TRUE)
-aneuploidy_hmapdata$case_barcode <- gsub("UC917", "SM019", aneuploidy_hmapdata$case_barcode)
+aneuploidy_hmapdata = meta_data  %>% 
+  mutate(idh_status = ifelse(idh_codel_subtype == "IDHwt", "IDHwt", "IDHmut")) %>% 
+  select(case_barcode, idh_codel_subtype, idh_status, timepoint = time_point, aneuoploidy_value = somatic_copy_number_alt_burden)
 
 
 ########### Combine annotation meta data ############
 meta_comb = clin_data %>% 
-  left_join(me_disorder_hmapdata, by=c("case_barcode", "idh_codel_subtype")) %>% 
+  left_join(mut_hmapdata, by=c("case_barcode", "idh_codel_subtype")) %>% 
   left_join(aneuploidy_hmapdata, by=c("case_barcode", "idh_codel_subtype")) %>% 
   inner_join(shannon_div_df, by="case_barcode") %>% 
   inner_join(disorder_mean, by="case_barcode") %>% 
@@ -239,12 +238,12 @@ gg_clinical <-
                        labels = c("WHO Grade", "Timepoint", "Hypermutator"))) %>%
   ggplot(aes(x=case_barcode)) +
   geom_tile(aes(fill = factor(value), y = type)) +
-  scale_fill_manual(values = c("0" = "white", "1" = "#377eb8", "initial" = "#CA2F66", "recurrence" = "#2FB3CA",
+  scale_fill_manual(values = c("0" = "white", "1" = "#377eb8", "Initial" = "#CA2F66", "Recurrence" = "#2FB3CA",
                                "II" = "#fee0d2", "III" = "#fc9272", "IV" = "#de2d26")) +
   labs(y="", fill = "Clinical")
 
 ## Relabel some of the variables.
-gg_clinical$data$value <- factor(gg_clinical$data$value, levels = c("0", "1", "initial", "recurrence", "II",
+gg_clinical$data$value <- factor(gg_clinical$data$value, levels = c("0", "1", "Initial", "Recurrence", "II",
                                                                     "III", "IV"))
 
 
@@ -375,7 +374,7 @@ g$heights[panels] <- unit(c(0.5, 0.05, 0.05, 0.05, 0.05), "null")
 plot(g)
 plot(gleg)
 
-pdf(file = "results/Fig3/Fig3b-cell-states-annotated.pdf", width = 7, height = 5, useDingbats = FALSE, bg="transparent")
+pdf(file = "results/Fig3/Fig3b-cell-states-annotated-publication.pdf", width = 7, height = 5, useDingbats = FALSE, bg="transparent")
 grid.newpage()
 grid.draw(g)
 dev.off()
@@ -392,6 +391,7 @@ dev.off()
 meta_comb_idh = meta_comb %>% filter(idh_status=="IDHmut")
 meta_comb_wt = meta_comb %>% filter(idh_status=="IDHwt")
 
+meta_comb$mut_freq[meta_comb$case_barcode=="SM011"] <- 269.85
 ## Shannon entropy vs. other summary metrics (all).
 cor.test(meta_comb$entropy, meta_comb$disorder, method="s")
 cor.test(meta_comb$entropy, meta_comb$aneuoploidy_value, method="s")
