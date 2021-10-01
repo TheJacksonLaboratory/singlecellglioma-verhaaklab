@@ -1,6 +1,6 @@
 
 ## Overview
-Code for analyses presented in Single-cell multimodal glioma analyses reveal epigenetic regulators of cellular plasticity and environmental stress response. _Nature Genetics_ (Accepted 2021).
+Code for analyses presented in Single-cell multimodal glioma analyses reveal epigenetic regulators of cellular plasticity and environmental stress response. [Paper link](https://www.nature.com/articles/s41588-021-00926-8).
 
 ## Data availability
 Processed data is available at: https://www.synapse.org/singlecellglioma
@@ -10,6 +10,6 @@ Glioma intratumoral heterogeneity enables adaptation to challenging microenviron
 
 
 ## Contact
-Lead contact for data and materials availability: Roel Verhaak[https://verhaaklab.com/contact/]
+Lead contact for data and materials availability: [Roel Verhaak](https://verhaaklab.com/contact/)
 
 Lead analysts: Kevin J. Anderson and Kevin C. Johnson
